@@ -34,16 +34,23 @@ test('request logs pair starts and finishes, hide URL secrets, and report stream
 class Fake implements Provider {
   readonly capabilities = { streaming: true, sessions: false };
   calls = 0; modelCalls = 0; cancelled = false;
+  lastInput: Generation | undefined;
+  cleanupDelay = 0;
+  cleanupComplete = true;
   mode: 'ok' | 'wait' | 'error' | 'buffered' | 'malformed' | 'tools' = 'ok';
   async models() { this.modelCalls++; return [{ id: 'test-model', efforts: ['low'], defaultEffort: 'low', isDefault: true }]; }
   async *generate(input: Generation): AsyncGenerator<GenerationEvent> {
     this.calls++;
+    this.lastInput = input;
+    this.cleanupComplete = false;
     if (this.mode === 'tools' && input.request?.messages.at(-1)?.role !== 'tool') { yield { type: 'tool_calls', calls: [{ id: 'call_test', type: 'function', function: { name: 'weather', arguments: '{"city":"Taipei"}' } }] }; return; }
     if (this.mode === 'error') throw new AIcliToAIapiError(429, 'upstream_rate_limit', 'Codex usage limit reached.');
     if (this.mode === 'malformed') return;
     if (this.mode === 'wait') { try { await delay(10000, undefined, { signal: input.signal }); } catch { this.cancelled = true; throw new Error('cancelled'); } }
     if (this.mode !== 'buffered') yield { type: 'delta', text: 'Actual fixture result' };
     yield { type: 'complete', text: 'Actual fixture result', usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 } };
+    if (this.cleanupDelay) await delay(this.cleanupDelay);
+    this.cleanupComplete = true;
   }
   async close() {}
 }
@@ -79,14 +86,16 @@ test('configured default workspace allows n8n without custom headers', async () 
 test('n8n-style tool round trip and streaming tool-call framing', async () => {
   const f = await fixture('tools');
   const messages = [{ role: 'user', content: 'Weather?' }];
-  const tools = [{ type: 'function', function: { name: 'weather', parameters: { type: 'object', properties: {} } } }];
+  const tools = [{ type: 'function', function: { name: 'weather', strict: true, parameters: { type: 'object', properties: { city: { type: 'string', enum: ['Taipei'] } }, required: ['city'] } } }];
   try {
-    const first = await (await f.send({ messages, tools })).json();
+    const first = await (await f.send({ messages, tools, temperature: 0.7, max_tokens: 1000 })).json();
+    assert.deepEqual(f.provider.lastInput!.request!.tools![0]!.function.parameters, tools[0]!.function.parameters);
+    assert.ok(!Object.hasOwn(f.provider.lastInput!.request!.tools![0]!.function, 'strict'));
     assert.equal(first.choices[0].finish_reason, 'tool_calls');
     const assistant = first.choices[0].message; assert.equal(assistant.content, null);
     const next = await (await f.send({ tools, messages: [...messages, assistant, { role: 'tool', tool_call_id: assistant.tool_calls[0].id, content: 'Sunny' }] })).json();
     assert.equal(next.choices[0].finish_reason, 'stop');
-    const stream = await (await f.send({ tools, messages, stream: true })).text();
+    const stream = await (await f.send({ tools, messages, stream: true, temperature: 0.7, max_completion_tokens: 1000 })).text();
     assert.match(stream, /"index":0,"id":"call_test"/); assert.match(stream, /"finish_reason":"tool_calls"/); assert.ok(stream.endsWith('data: [DONE]\n\n'));
   } finally { await f.close(); }
 });
@@ -136,4 +145,55 @@ test('upstream failures and missing final output return errors', async () => {
   const f = await fixture('error');
   try { assert.equal((await f.send()).status, 429); f.provider.mode = 'malformed'; assert.equal((await f.send()).status, 502); }
   finally { await f.close(); }
+});
+
+test('compatibility normalizes before JSON and SSE provider execution', async () => {
+  const f = await fixture();
+  try {
+    for (const stream of [false, true]) {
+      const response = await f.send({ messages: [{ role: 'user', content: 'Hello' }], stream, temperature: 0.7, top_p: 1, max_tokens: 1000, n: 1, response_format: { type: 'text' }, ...(stream ? { stream_options: { include_usage: true } } : {}) });
+      assert.equal(response.status, 200);
+      if (stream) {
+        const frames = (await response.text()).trim().split('\n\n').map(frame => frame.slice(6));
+        assert.equal(frames.pop(), '[DONE]');
+        const chunks = frames.map(frame => JSON.parse(frame));
+        assert.equal(chunks[0].choices[0].delta.role, 'assistant');
+        assert.ok(chunks.every(chunk => chunk.object === 'chat.completion.chunk'));
+        assert.equal(chunks.at(-2).choices[0].finish_reason, 'stop');
+        assert.equal(chunks.at(-1).usage.total_tokens, 5);
+      } else assert.equal((await response.json()).choices[0].finish_reason, 'stop');
+      for (const field of ['temperature', 'top_p', 'max_tokens', 'n', 'response_format']) assert.ok(!Object.hasOwn(f.provider.lastInput!.request!, field));
+    }
+    assert.ok(f.logs.some(entry => (entry as Record<string, unknown>).event === 'openai_compatibility'));
+  } finally { await f.close(); }
+});
+
+test('semantic errors return JSON before SSE headers or model discovery', async () => {
+  const f = await fixture();
+  try {
+    for (const unsupported of [{ n: 2 }, { response_format: { type: 'json_object' } }, { tool_choice: 'required' }, { stop: 'END' }]) {
+      const response = await f.send({ messages: [{ role: 'user', content: 'Hello' }], stream: true, ...unsupported });
+      assert.equal(response.status, 400);
+      assert.match(response.headers.get('content-type')!, /application\/json/);
+      const body = await response.json();
+      assert.equal(body.error.param, Object.keys(unsupported)[0]);
+      assert.equal(body.error.code, 'unsupported_value');
+    }
+    assert.equal(f.provider.calls + f.provider.modelCalls, 0);
+  } finally { await f.close(); }
+});
+
+test('JSON and SSE completion wait for provider cleanup before immediate follow-up', async () => {
+  const f = await fixture(); f.provider.cleanupDelay = 30;
+  try {
+    for (const stream of [false, true]) {
+      const response = await f.send({ messages: [{ role: 'user', content: 'Hello' }], stream });
+      assert.equal(response.status, 200);
+      await response.text();
+      assert.equal(f.provider.cleanupComplete, true);
+      const next = await f.send();
+      assert.equal(next.status, 200);
+      await next.text();
+    }
+  } finally { await f.close(); }
 });

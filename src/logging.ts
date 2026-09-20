@@ -19,6 +19,10 @@ export function formatRequestLog(entry: Record<string, unknown>): string | undef
   return `  ${fields.join('  ')}  ${detail.join('  ')}`;
 }
 export function terminalRequestLog(entry: Record<string, unknown>): void {
+  if (entry.event === 'openai_compatibility' && process.env.AICLITOAIAPI_DEBUG === '1') {
+    console.debug(`  OpenAI compatibility: ${clean(entry.field)} -> ${clean(entry.action)} (${clean(entry.reason)})`);
+    return;
+  }
   const line = formatRequestLog(entry);
   if (line) console.log(line);
 }

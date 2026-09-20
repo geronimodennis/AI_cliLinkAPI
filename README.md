@@ -8,7 +8,9 @@ Upgrading from an earlier name: existing private configuration and credentials a
 
 Native Node.js/strict TypeScript gateway for a **ChatGPT-authenticated Codex** runtime. The aiclitoaiapi key protects this HTTP service; it is not an OpenAI API key. No containers, VMs, direct OpenAI API client, browser-cookie extraction, or unofficial ChatGPT endpoints are used.
 
-**Current delivery status:** HTTP routing, Codex app-server adapter, discovery, permissions profiles, setup, cancellation, and tests are implemented. By default, native Windows agent execution is attempted without isolation qualification probes; setting `provider.allowUnqualifiedWindowsExecution=false` restores the platform block. The available Windows host failed sandbox initialization. Linux/macOS execution requires the real native isolation probes to pass on that host; those platforms have not been executed during this build. A successful live Codex completion is still unverified because runtime ChatGPT login and private configuration were unavailable. See [verification](docs/verification.md) and [security](docs/security.md). This is not a claim of a production-qualified cross-platform release.
+**Current delivery status:** HTTP routing, Codex app-server adapter, discovery, permissions profiles, setup, cancellation, and tests are implemented. By default, native Windows agent execution is attempted without isolation qualification probes; setting `provider.allowUnqualifiedWindowsExecution=false` restores the platform block. The available Windows host failed sandbox initialization. Linux/macOS execution requires the real native isolation probes to pass on that host; those platforms have not been executed during this build. Real text completion and SSE have now succeeded on the available Windows host, and an n8n AI Agent node produced output. Live external-tool execution remains limited by a code-mode host error; full built-in n8n Assistant building/debugging is unverified. See [verification](docs/verification.md) and [security](docs/security.md). This is not a claim of a production-qualified cross-platform release.
+
+For n8n, follow the [detailed AI Assistant setup guide](docs/n8n-ai-assistant.md) or the [AI Agent workflow guide](docs/n8n.md).
 
 ## Install natively
 
@@ -109,7 +111,7 @@ All endpoints require `Authorization: Bearer <aiclitoaiapi-key>`. One shared key
 
 Friendly effort labels `Light`, `Medium`, `Strong` map to `low`, `medium`, `high` only if supported. Other values must appear in discovery. Defaults can be set as `provider.defaultModel` and `provider.defaultReasoning`. Invalid defaults or overrides are rejected, never downgraded. Effort is never added to prompt text and is unrelated to verbosity or output limits.
 
-Text messages, function tools and results, `tool_choice: auto/none`, `n: 1`, text response format, and streaming usage requests are supported. Sampling controls, token limits, image inputs, structured output and forced tool choices return 400. Use clients with automatic retries disabled: a failed/timed-out call may already have edited files or invoked an external tool.
+Text messages, function tools and results, `tool_choice: auto/none`, `n: 1`, text response format, and streaming usage requests are supported. Valid sampling controls, token-limit hints, seed and user metadata are accepted but ignored; they do not change runtime behavior or cap output. Function strict hints are removed while preserving the schema. Image inputs, structured output, stop sequences, multiple completions and forced tool choices return parameter-specific 400 errors. See the [compatibility matrix](docs/openai-compatibility.md). Use clients with automatic retries disabled: a failed/timed-out call may already have edited files or invoked an external tool.
 
 ## Requests without exposing the key
 

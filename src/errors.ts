@@ -1,5 +1,5 @@
 export class AIcliToAIapiError extends Error {
-  constructor(public readonly status: number, public readonly code: string, message: string) { super(message); }
+  constructor(public readonly status: number, public readonly code: string, message: string, public readonly param: string | null = null) { super(message); }
 }
 export function normalizeError(error: unknown): AIcliToAIapiError {
   if (error instanceof AIcliToAIapiError) return error;
@@ -10,4 +10,4 @@ export function normalizeError(error: unknown): AIcliToAIapiError {
   if (/approval|permission|sandbox/i.test(text)) return new AIcliToAIapiError(403, 'execution_denied', 'Codex denied execution under the configured permissions. No escalation was approved.');
   return new AIcliToAIapiError(502, 'upstream_error', 'Codex execution failed. Check runtime access and retry deliberately; changes may already have occurred.');
 }
-export const errorBody = (error: AIcliToAIapiError) => ({ error: { message: error.message, type: error.status === 401 ? 'authentication_error' : error.status < 500 ? 'invalid_request_error' : 'server_error', param: null, code: error.code } });
+export const errorBody = (error: AIcliToAIapiError) => ({ error: { message: error.message, type: error.status === 401 ? 'authentication_error' : error.status < 500 ? 'invalid_request_error' : 'server_error', param: error.param, code: error.code } });

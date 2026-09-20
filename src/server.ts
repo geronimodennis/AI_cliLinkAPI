@@ -55,7 +55,7 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
         for await (const chunk of request) { const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk); bytes += buffer.length; if (bytes > config.server.maxBodyBytes) throw new AIcliToAIapiError(413, 'request_too_large', 'Request body exceeds configured limit.'); chunks.push(buffer); }
       } finally { signal.removeEventListener('abort', abortRead); }
       let value: unknown; try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new AIcliToAIapiError(400, 'invalid_json', 'Request body must be valid JSON.'); }
-      const parsed = parseRequest(value);
+      const parsed = parseRequest(value, entry => record({ event: 'openai_compatibility', level: 'debug', ...entry }));
       requestedStream = parsed.stream;
       const selected = selectModel(parsed, await provider.models(signal), config.provider);
       if (parsed.stream && !provider.capabilities.streaming) throw new AIcliToAIapiError(400, 'stream_unsupported', 'Provider does not support streaming.');
@@ -63,7 +63,7 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
       const base = { id, created, model: selected.model };
       const chunk = (delta: Record<string, unknown>, finish: string | null = null) => ({ ...base, object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: finish }] });
       const redactor = new Redactor([config.auth.apiKey, config.provider.codexHome, os.homedir(), ...Object.values(config.workspaces).map(w => w.path)]);
-      let complete = false; let receivedDelta = false;
+      let complete = false; let receivedDelta = false; let finalBody: unknown;
       for await (const event of provider.generate({ ...selected, ...translate(parsed.messages), workspace, signal, request: parsed })) {
         signal.throwIfAborted();
         if (parsed.stream && !streaming) { response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache, no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' }); streaming = true; await sse(response, chunk({ role: 'assistant' }), signal); }
@@ -74,8 +74,8 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
           complete = true;
           if (parsed.stream) {
             await sse(response, chunk({ tool_calls: event.calls.map((call, index) => ({ index, ...call })) }), signal);
-            await sse(response, chunk({}, 'tool_calls'), signal); await sse(response, '[DONE]', signal); response.end();
-          } else json(response, 200, { ...base, object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: event.calls }, finish_reason: 'tool_calls' }] });
+            await sse(response, chunk({}, 'tool_calls'), signal);
+          } else finalBody = { ...base, object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: event.calls }, finish_reason: 'tool_calls' }] };
         } else {
           complete = true;
           if (parsed.stream) {
@@ -83,11 +83,16 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
             const text = redactor.push('', true); if (text) await sse(response, chunk({ content: text }), signal);
             await sse(response, chunk({}, 'stop'), signal);
             if (parsed.stream_options?.include_usage && event.usage) await sse(response, { ...base, object: 'chat.completion.chunk', choices: [], usage: event.usage }, signal);
-            await sse(response, '[DONE]', signal); response.end();
-          } else json(response, 200, { ...base, object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: redactor.clean(event.text) }, finish_reason: 'stop' }], ...(event.usage ? { usage: event.usage } : {}) });
+          } else finalBody = { ...base, object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: redactor.clean(event.text) }, finish_reason: 'stop' }], ...(event.usage ? { usage: event.usage } : {}) };
         }
       }
       if (!complete) throw new AIcliToAIapiError(502, 'missing_final_response', 'Codex ended without a final response.');
+      // Provider cleanup/continuation retention must finish before a client sees
+      // completion and sends its next request against the same workspace.
+      signal.throwIfAborted();
+      release?.(); release = undefined;
+      if (parsed.stream) { await sse(response, '[DONE]', signal); response.end(); }
+      else json(response, 200, finalBody);
     } catch (error) {
       const safe = timedOut ? new AIcliToAIapiError(504, 'timeout', 'Request timed out; execution was cancelled. Changes may already have occurred.') : normalizeError(error);
       failureStatus = signal.aborted && !timedOut ? 499 : safe.status;

@@ -56,8 +56,23 @@ test('native dynamic tool adapter retains a real protocol request and rejects un
     const events: GenerationEvent[] = []; for await (const event of adapter.continueTurn(input(), state)) events.push(event);
     assert.equal(events.length, 1); const event = events[0]!; assert.equal(event.type, 'tool_calls');
     if (event.type === 'tool_calls') { assert.equal(event.calls[0]!.function.name, 'weather'); assert.deepEqual(JSON.parse(event.calls[0]!.function.arguments), { city: 'Taipei' }); }
+    const disabled = input(); disabled.request!.tool_choice = 'none';
+    await assert.rejects(async () => { for await (const _ of adapter.continueTurn(disabled, state)) {} }, { code: 'unexpected_tool' });
     notification.params.tool = 'unregistered';
     await assert.rejects(async () => { for await (const _ of adapter.continueTurn(input(), state)) {} }, { code: 'unexpected_tool' });
   } finally { await provider.close(); }
   assert.equal(closed, true);
+});
+
+test('normalized optional controls and strict hints do not break tool continuations', async () => {
+  const store = new ToolSessions<number>(2, 1000, async () => {});
+  const start = input();
+  const rawTools = start.request!.tools!.map(tool => ({ ...tool, function: { ...tool.function, strict: true } }));
+  start.request = parseRequest({ ...start.request, tools: rawTools, temperature: 0.7 });
+  try {
+    const call = store.put(start, 7, 'weather', { city: 'Taipei' });
+    const next = resume(start, call);
+    next.request = parseRequest({ ...next.request, tools: rawTools, temperature: 1, max_tokens: 1000 });
+    assert.deepEqual(store.take(next), { value: 7, result: 'Sunny' });
+  } finally { await store.closeAll(); }
 });

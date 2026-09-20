@@ -475,3 +475,5 @@ The configuration directory must be dedicated and contain only the config file a
 For diagnosis, share the error code, status, relevant setting names, and sanitized terminal output. Do not share the full credential file. Normal request logs include request IDs, status, duration, and error codes rather than prompts or keys.
 
 Run one gateway process per set of workspace folders: locks and tool continuations are process-local. See [architecture](architecture.md) and [security boundaries](security.md) for operational limits.
+
+For step-by-step setup of the built-in n8n Assistant, including LAN/Docker/tunnel networking and verification, see [Configure n8n AI Assistant with AIcliToAIapi](n8n-ai-assistant.md).

@@ -1,6 +1,6 @@
 {
   "name": "aiclitoaiapi",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Native CLI gateway for a ChatGPT-authenticated Codex runtime.",
   "repository": {
     "type": "git",
