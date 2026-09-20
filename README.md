@@ -1,10 +1,27 @@
 # CliLinkAPI
 
+[npm package](https://www.npmjs.com/package/clilinkapi) · [GitHub repository](https://github.com/geronimodennis/AI_cliLinkAPI) · [Report an issue](https://github.com/geronimodennis/AI_cliLinkAPI/issues)
+
 Native Node.js/strict TypeScript gateway for a **ChatGPT-authenticated Codex** runtime. The clilinkapi key protects this HTTP service; it is not an OpenAI API key. No containers, VMs, direct OpenAI API client, browser-cookie extraction, or unofficial ChatGPT endpoints are used.
 
 **Current delivery status:** HTTP routing, Codex app-server adapter, discovery, permissions profiles, setup, cancellation, and tests are implemented. By default, native Windows agent execution is attempted without isolation qualification probes; setting `provider.allowUnqualifiedWindowsExecution=false` restores the platform block. The available Windows host failed sandbox initialization. Linux/macOS execution requires the real native isolation probes to pass on that host; those platforms have not been executed during this build. A successful live Codex completion is still unverified because runtime ChatGPT login and private configuration were unavailable. See [verification](docs/verification.md) and [security](docs/security.md). This is not a claim of a production-qualified cross-platform release.
 
 ## Install natively
+
+Install [clilinkapi from npm](https://www.npmjs.com/package/clilinkapi) with Node.js 22 or newer:
+
+```sh
+npm install -g clilinkapi
+clilinkapi
+```
+
+Use `clilinkapi serve` to start with the default configuration, or `clilinkapi serve "/absolute/path/to/clilinkapi.json"` to select a configuration file. Run `clilinkapi` without arguments for the available setup and login commands.
+
+The npm package includes compiled code and the pinned Codex runtime dependency; no repository checkout or build is needed. Complete the [first-time setup](https://github.com/geronimodennis/AI_cliLinkAPI/blob/HEAD/docs/configuration.md#first-time-setup) before starting the server. On Windows, use `npm.cmd` and `clilinkapi.cmd` if PowerShell blocks script shims.
+
+To update an npm installation, stop the running server, run `npm install -g clilinkapi@latest`, and restart. Updating the package does not replace your private configuration.
+
+To build from source:
 
 Install Node.js 22 or 24 LTS and use a native shell:
 
@@ -23,35 +40,37 @@ The runtime is pinned to Codex CLI/SDK **0.155.0**. Package installation include
 
 ## Configure and sign in
 
+For source installations only, run `npm link` once after building. Then use `clilinkapi serve`, `clilinkapi doctor`, or `clilinkapi serve "C:/path/to/clilinkapi.json"` from any directory. Running `clilinkapi` alone shows help. This links the command to this checkout and still requires Node.js; rebuild after source changes. On Windows, use `clilinkapi.cmd` if PowerShell blocks the generated script. See the [configuration guide](docs/configuration.md#1-install-dependencies) for setup details.
+
 See the [complete configuration guide](docs/configuration.md) for a full JSON template, every field and default, Windows execution settings, LAN access, n8n setup, verification commands, and troubleshooting.
 
-Copy `clilinkapi.example.json` to a temporary template and edit its absolute paths. Only placeholders belong in version control. Use `/home/your-user/.clilinkapi/codex` on Linux or `/Users/your-user/.clilinkapi/codex` on macOS for `provider.codexHome`; the example uses Windows paths. Both workspace directories must already exist. Remove unused workspace entries.
+Copy `clilinkapi.example.json` from the installed package (under `npm root -g` → `clilinkapi`) or source checkout to a temporary template and edit its absolute paths. Only placeholders belong in version control. Use `/home/your-user/.clilinkapi/codex` on Linux or `/Users/your-user/.clilinkapi/codex` on macOS for `provider.codexHome`; the example uses Windows paths. Both workspace directories must already exist. Remove unused workspace entries.
 
 Keep private configuration and Codex home outside **every** workspace, preferably in a dedicated service account's private directory. Workspaces cannot overlap or be filesystem roots. The service rejects custom Codex configuration, hooks, plugins, rules and skills in its dedicated Codex home. Project `.codex`/`.agents` folders may remain in place: the runtime treats the workspace as untrusted and skips project configuration; project skills in `.agents/skills` are allowed by default. Set `provider.allowProjectSkills` to `false` and restart the server to disable workspace skills. Bundled runtime skills remain disabled. Symbolic links and Windows junctions are allowed by default when their resolved targets stay inside the same workspace. Set `provider.allowSymbolicLinks` to `false` and restart to reject all symbolic links and junctions. Broken links, directory cycles, links outside the workspace, and hard-linked files remain blocked. Parent directories may contain Codex configuration or instructions; their presence does not block workspace validation. Use trusted projects and a dedicated runtime account. Do not put credentials in project files.
 
-The CLI expands `~`, literal `$HOME`, `${HOME}`, `%USERPROFILE%`, and `$env:USERPROFILE` at the start of its configuration filename. This also works when your shell does not expand them. For example, Command Prompt users can use `npm run clilinkapi -- setup "~/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json`. Paths inside the JSON template still need actual absolute paths; replace `YOUR_USER` and the example workspace paths before setup.
+The CLI expands `~`, literal `$HOME`, `${HOME}`, `%USERPROFILE%`, and `$env:USERPROFILE` at the start of its configuration filename. This also works when your shell does not expand them. For example, Command Prompt users can use `clilinkapi setup "~/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json`. Paths inside the JSON template still need actual absolute paths; replace `YOUR_USER` and the example workspace paths before setup.
 
 PowerShell:
 
 ```powershell
-npm run clilinkapi -- setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
-npm run clilinkapi -- login "$HOME/.clilinkapi/clilinkapi.json"
-npm run clilinkapi -- doctor "$HOME/.clilinkapi/clilinkapi.json"
-npm run clilinkapi -- serve "$HOME/.clilinkapi/clilinkapi.json"
+clilinkapi setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
+clilinkapi login "$HOME/.clilinkapi/clilinkapi.json"
+clilinkapi doctor "$HOME/.clilinkapi/clilinkapi.json"
+clilinkapi serve "$HOME/.clilinkapi/clilinkapi.json"
 ```
 
 Linux/macOS:
 
 ```sh
-npm run clilinkapi -- setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
-npm run clilinkapi -- login "$HOME/.clilinkapi/clilinkapi.json"
-npm run clilinkapi -- doctor "$HOME/.clilinkapi/clilinkapi.json"
-npm run clilinkapi -- serve "$HOME/.clilinkapi/clilinkapi.json"
+clilinkapi setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
+clilinkapi login "$HOME/.clilinkapi/clilinkapi.json"
+clilinkapi doctor "$HOME/.clilinkapi/clilinkapi.json"
+clilinkapi serve "$HOME/.clilinkapi/clilinkapi.json"
 ```
 
 `setup` uses 32 cryptographically random bytes, stores the generated key without printing it, and refuses to overwrite an existing configuration. On Unix it requires private directory/file modes (`0700`/`0600`); on Windows it applies an ACL for the runtime user and SYSTEM. Run under the same account that will run the server. Administrators remain trusted. A private parent directory is required even for key rotation.
 
-If an existing configuration fails the ACL check, run `npm run clilinkapi -- secure-config "~/.clilinkapi/clilinkapi.json"` as the runtime user. This secures the dedicated directory, configuration file and configured `codex` child folder without changing file contents or rotating the key. It creates that Codex folder if missing. It requires current-user ownership and refuses unrelated entries, links, your home directory and filesystem roots. A Codex home outside that dedicated child location must be secured separately. On Windows, startup permits read/traverse-only access to the configuration's parent folder, but rejects other users' modification rights; the configuration file and Codex storage still require private ACLs. Setup also secures an existing empty directory automatically. If a configuration already exists, continue with `login` or `doctor` instead of rerunning setup.
+If an existing configuration fails the ACL check, run `clilinkapi secure-config "~/.clilinkapi/clilinkapi.json"` as the runtime user. This secures the dedicated directory, configuration file and configured `codex` child folder without changing file contents or rotating the key. It creates that Codex folder if missing. It requires current-user ownership and refuses unrelated entries, links, your home directory and filesystem roots. A Codex home outside that dedicated child location must be secured separately. On Windows, startup permits read/traverse-only access to the configuration's parent folder, but rejects other users' modification rights; the configuration file and Codex storage still require private ACLs. Setup also secures an existing empty directory automatically. If a configuration already exists, continue with `login` or `doctor` instead of rerunning setup.
 
 `login` invokes the official Codex login process with ChatGPT authentication forced. The official process may print a login URL or device code for the human sign-in flow; the clilinkapi never prints stored credentials. If browser login is unavailable, use `login CONFIG --device-auth` where supported by your workspace. Supported Codex credential storage remains in `provider.codexHome` or its supported OS credential store. No credential file is parsed or copied by the clilinkapi. A compatible existing **dedicated** Codex home may be configured; a browser or desktop login is not assumed to be shared.
 
@@ -60,7 +79,7 @@ If login fails, check your ChatGPT subscription, workspace Codex permissions, SS
 Update configuration while stopped, preserve private permissions, and restart; there is no hot reload. Rotation:
 
 ```sh
-npm run clilinkapi -- rotate-key /absolute/private/clilinkapi.json
+clilinkapi rotate-key /absolute/private/clilinkapi.json
 ```
 
 Restart and update clients through your own secure secret-distribution method. Running processes retain the previous key until restarted. Do not print the key into a terminal or commit it. Never run multiple clilinkapi instances against overlapping project trees; see the concurrency limitation in the security document.

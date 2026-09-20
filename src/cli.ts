@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { mkdir, writeFile, rename, unlink, realpath, readdir, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';

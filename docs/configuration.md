@@ -1,6 +1,6 @@
 # CliLinkAPI configuration guide
 
-This guide describes the configuration accepted by the current application. Commands run from the CliLinkAPI repository unless stated otherwise.
+This guide describes the configuration accepted by the current application. Install [clilinkapi from npm](https://www.npmjs.com/package/clilinkapi), or build from the [GitHub repository](https://github.com/geronimodennis/AI_cliLinkAPI). Standalone CLI commands work from any directory; source-build commands run from the repository.
 
 ## Contents
 
@@ -29,7 +29,18 @@ An OpenAI API key is not a replacement for either step. A desktop Codex login is
 
 ### 1. Install dependencies
 
-Use Node.js 22 or newer, then run:
+Use Node.js 22 or newer. For the published CLI, run:
+
+```powershell
+npm install -g clilinkapi
+clilinkapi
+```
+
+The npm package includes compiled code and installs the pinned Codex runtime dependency. No checkout, `npm ci`, `npm link`, or build is needed for this installation method. Continue with step 2 to configure and sign in before serving requests.
+
+To update later, stop the server, run `npm install -g clilinkapi@latest`, and restart. Your private configuration remains in its existing location.
+
+For development from a source checkout instead, run these commands in the repository:
 
 ```powershell
 npm ci
@@ -38,6 +49,24 @@ npm run build
 
 The repository pins the official Codex runtime to version `0.155.0`. A global Codex installation is not needed.
 
+To register the source checkout as a standalone `clilinkapi` command, run once from this repository after building:
+
+```powershell
+npm.cmd link
+```
+
+You can then run these commands from any directory:
+
+```powershell
+clilinkapi serve
+clilinkapi serve "C:/WORKSPACE/CliLinkAPI/workspaces/clilinkapi.json"
+clilinkapi doctor
+```
+
+Use `clilinkapi serve`, without npm's `--` separator. Running `clilinkapi` alone displays help. Omitting the configuration path uses the runtime user's `~/.clilinkapi/clilinkapi.json`; it does not search the current directory. For a source checkout, `npm run clilinkapi -- COMMAND` is an alternative to `clilinkapi COMMAND`.
+
+This is a Node.js CLI, so Node.js must remain installed. `npm link` points to this checkout: keep its path, dependencies, and compiled `dist` files available, and rebuild with `npm run build` after source changes. If PowerShell blocks the generated script, use `clilinkapi.cmd`. If the command is not found, ensure the directory reported by `npm prefix -g` is on your Windows `PATH`, then reopen the terminal. On Linux/macOS, use `npm link`; the command is installed under the global prefix's `bin` directory.
+
 ### 2. Prepare workspace folders and a template
 
 Create the folders that the agent may use. For example, on Windows:
@@ -45,16 +74,19 @@ Create the folders that the agent may use. For example, on Windows:
 ```powershell
 New-Item -ItemType Directory -Force -Path C:/Projects/project-a
 New-Item -ItemType Directory -Force -Path C:/Documents/reference
-Copy-Item ./clilinkapi.example.json ./clilinkapi.setup.json
+$packageRoot = Join-Path (npm root -g) 'clilinkapi'
+Copy-Item (Join-Path $packageRoot 'clilinkapi.example.json') ./clilinkapi.setup.json
 notepad ./clilinkapi.setup.json
 ```
 
 Edit the template's username and paths. Keep only workspaces you need. The template contains a placeholder key; `setup` replaces it with a securely generated key. Do not put a real key into this repository template.
 
+The template above comes from the installed npm package (or linked checkout). From a source checkout, you can also copy `./clilinkapi.example.json` directly. On Linux/macOS, copy it with `cp "$(npm root -g)/clilinkapi/clilinkapi.example.json" ./clilinkapi.setup.json`, then edit native absolute workspace and Codex-home paths.
+
 ### 3. Create the private configuration
 
 ```powershell
-npm run clilinkapi -- setup "~/.clilinkapi/clilinkapi.json" ./clilinkapi.setup.json
+clilinkapi setup "~/.clilinkapi/clilinkapi.json" ./clilinkapi.setup.json
 ```
 
 Setup creates private configuration and Codex-home directories, generates a key, and checks workspace boundaries. It never overwrites an existing configuration. If you already have a configuration, edit it instead of running setup again.
@@ -70,14 +102,14 @@ Run setup, login, and serve under the same OS account. Configuration permissions
 ### 4. Sign in and check the runtime
 
 ```powershell
-npm run clilinkapi -- login "~/.clilinkapi/clilinkapi.json"
-npm run clilinkapi -- doctor "~/.clilinkapi/clilinkapi.json"
+clilinkapi login "~/.clilinkapi/clilinkapi.json"
+clilinkapi doctor "~/.clilinkapi/clilinkapi.json"
 ```
 
 Follow the official ChatGPT sign-in flow. If browser login is unavailable and your account supports device authentication:
 
 ```powershell
-npm run clilinkapi -- login "~/.clilinkapi/clilinkapi.json" --device-auth
+clilinkapi login "~/.clilinkapi/clilinkapi.json" --device-auth
 ```
 
 `doctor` checks platform eligibility and authenticated model discovery. It does not establish that a real generation or every sandbox operation will succeed.
@@ -85,7 +117,7 @@ npm run clilinkapi -- login "~/.clilinkapi/clilinkapi.json" --device-auth
 ### 5. Start the server
 
 ```powershell
-npm run clilinkapi -- serve "~/.clilinkapi/clilinkapi.json"
+clilinkapi serve "~/.clilinkapi/clilinkapi.json"
 ```
 
 The banner shows the actual listening address, port, hostname, process ID, URLs, endpoints, and request settings. `LISTENING` means the HTTP server started; it is not a successful generation test. Stop with Ctrl+C.
@@ -391,14 +423,14 @@ This second request performs a real model call and can consume account usage. Do
 | `serve CONFIG` | Start the gateway until stopped |
 | `rotate-key CONFIG` | Generate and atomically store a replacement gateway key |
 
-Prefix each with `npm run clilinkapi --`. Except for setup's template argument, the CLI can use its default configuration path when `CONFIG` is omitted.
+Prefix each with `clilinkapi`. Except for setup's template argument, the CLI can use its default configuration path when `CONFIG` is omitted.
 
-Configuration does not hot-reload. Stop the server, edit its private file, and restart. If using `npm start`, rebuild after source changes; `npm run clilinkapi -- serve` runs TypeScript source directly.
+Configuration does not hot-reload. Stop the server, edit its private file, and restart. If using `npm start`, rebuild after source changes; `npm run clilinkapi -- serve` runs TypeScript source directly from a checkout.
 
 To rotate a key:
 
 ```powershell
-npm run clilinkapi -- rotate-key "~/.clilinkapi/clilinkapi.json"
+clilinkapi rotate-key "~/.clilinkapi/clilinkapi.json"
 ```
 
 Restart the server and update n8n's stored key. A running process continues using its old in-memory configuration until restarted.
@@ -406,7 +438,7 @@ Restart the server and update n8n's stored key. A running process continues usin
 For permission repair:
 
 ```powershell
-npm run clilinkapi -- secure-config "~/.clilinkapi/clilinkapi.json"
+clilinkapi secure-config "~/.clilinkapi/clilinkapi.json"
 ```
 
 The configuration directory must be dedicated and contain only the config file and its configured `codex` child folder. This command refuses unrelated entries, symlinks, filesystem roots, and the user's home directory itself. A Codex home elsewhere must be secured separately. Preserve backups in a private location outside this dedicated directory and outside every workspace.

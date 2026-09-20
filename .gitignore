@@ -11,4 +11,5 @@ coverage/
 .tmp-schema/
 .test-tmp/
 *.tmp
+*.tgz
 gateway.json
