@@ -59,11 +59,11 @@ You can then run these commands from any directory:
 
 ```powershell
 aiclitoaiapi serve
-aiclitoaiapi serve "C:/WORKSPACE/AIcliToAIapi/workspaces/clilinkapi.json"
+aiclitoaiapi serve "C:/WORKSPACE/AIcliToAIapi/workspaces/aiclitoaiapi.json"
 aiclitoaiapi doctor
 ```
 
-Use `aiclitoaiapi serve`, without npm's `--` separator. Running `aiclitoaiapi` alone displays help. Omitting the configuration path uses the runtime user's `~/.clilinkapi/clilinkapi.json`; it does not search the current directory. For a source checkout, `npm run aiclitoaiapi -- COMMAND` is an alternative to `aiclitoaiapi COMMAND`.
+Use `aiclitoaiapi serve`, without npm's `--` separator. Running `aiclitoaiapi` alone displays help. Omitting the configuration path uses the runtime user's `~/.aiclitoaiapi/aiclitoaiapi.json`; it does not search the current directory. For a source checkout, `npm run aiclitoaiapi -- COMMAND` is an alternative to `aiclitoaiapi COMMAND`.
 
 This is a Node.js CLI, so Node.js must remain installed. `npm link` points to this checkout: keep its path, dependencies, and compiled `dist` files available, and rebuild with `npm run build` after source changes. If PowerShell blocks the generated script, use `aiclitoaiapi.cmd`. If the command is not found, ensure the directory reported by `npm prefix -g` is on your Windows `PATH`, then reopen the terminal. On Linux/macOS, use `npm link`; the command is installed under the global prefix's `bin` directory.
 
@@ -75,26 +75,26 @@ Create the folders that the agent may use. For example, on Windows:
 New-Item -ItemType Directory -Force -Path C:/Projects/project-a
 New-Item -ItemType Directory -Force -Path C:/Documents/reference
 $packageRoot = Join-Path (npm root -g) 'aiclitoaiapi'
-Copy-Item (Join-Path $packageRoot 'clilinkapi.example.json') ./aiclitoaiapi.setup.json
+Copy-Item (Join-Path $packageRoot 'aiclitoaiapi.example.json') ./aiclitoaiapi.setup.json
 notepad ./aiclitoaiapi.setup.json
 ```
 
 Edit the template's username and paths. Keep only workspaces you need. The template contains a placeholder key; `setup` replaces it with a securely generated key. Do not put a real key into this repository template.
 
-The template above comes from the installed npm package (or linked checkout). From a source checkout, you can also copy `./clilinkapi.example.json` directly. On Linux/macOS, copy it with `cp "$(npm root -g)/aiclitoaiapi/clilinkapi.example.json" ./aiclitoaiapi.setup.json`, then edit native absolute workspace and Codex-home paths.
+The template above comes from the installed npm package (or linked checkout). From a source checkout, you can also copy `./aiclitoaiapi.example.json` directly. On Linux/macOS, copy it with `cp "$(npm root -g)/aiclitoaiapi/aiclitoaiapi.example.json" ./aiclitoaiapi.setup.json`, then edit native absolute workspace and Codex-home paths.
 
 ### 3. Create the private configuration
 
 ```powershell
-aiclitoaiapi setup "~/.clilinkapi/clilinkapi.json" ./aiclitoaiapi.setup.json
+aiclitoaiapi setup "~/.aiclitoaiapi/aiclitoaiapi.json" ./aiclitoaiapi.setup.json
 ```
 
 Setup creates private configuration and Codex-home directories, generates a key, and checks workspace boundaries. It never overwrites an existing configuration. If you already have a configuration, edit it instead of running setup again.
 
-The default configuration location is the runtime user's home directory plus `.clilinkapi/clilinkapi.json`, for example:
+The default configuration location is the runtime user's home directory plus `.aiclitoaiapi/aiclitoaiapi.json`, for example:
 
 ```text
-C:/Users/geron/.clilinkapi/clilinkapi.json
+C:/Users/geron/.aiclitoaiapi/aiclitoaiapi.json
 ```
 
 Run setup, login, and serve under the same OS account. Configuration permissions are checked at startup.
@@ -102,14 +102,14 @@ Run setup, login, and serve under the same OS account. Configuration permissions
 ### 4. Sign in and check the runtime
 
 ```powershell
-aiclitoaiapi login "~/.clilinkapi/clilinkapi.json"
-aiclitoaiapi doctor "~/.clilinkapi/clilinkapi.json"
+aiclitoaiapi login "~/.aiclitoaiapi/aiclitoaiapi.json"
+aiclitoaiapi doctor "~/.aiclitoaiapi/aiclitoaiapi.json"
 ```
 
 Follow the official ChatGPT sign-in flow. If browser login is unavailable and your account supports device authentication:
 
 ```powershell
-aiclitoaiapi login "~/.clilinkapi/clilinkapi.json" --device-auth
+aiclitoaiapi login "~/.aiclitoaiapi/aiclitoaiapi.json" --device-auth
 ```
 
 `doctor` checks platform eligibility and authenticated model discovery. It does not establish that a real generation or every sandbox operation will succeed.
@@ -117,7 +117,7 @@ aiclitoaiapi login "~/.clilinkapi/clilinkapi.json" --device-auth
 ### 5. Start the server
 
 ```powershell
-aiclitoaiapi serve "~/.clilinkapi/clilinkapi.json"
+aiclitoaiapi serve "~/.aiclitoaiapi/aiclitoaiapi.json"
 ```
 
 The banner shows the actual listening address, port, hostname, process ID, URLs, endpoints, and request settings. `LISTENING` means the HTTP server started; it is not a successful generation test. Stop with Ctrl+C.
@@ -125,10 +125,10 @@ The banner shows the actual listening address, port, hostname, process ID, URLs,
 For compiled execution after `npm run build`:
 
 ```powershell
-npm start -- "~/.clilinkapi/clilinkapi.json"
+npm start -- "~/.aiclitoaiapi/aiclitoaiapi.json"
 ```
 
-These CLI commands also work in a native Linux/macOS shell. Use native absolute JSON paths, such as `/home/service/.clilinkapi/codex` or `/Users/service/.clilinkapi/codex`, and existing workspace folders on that host. Linux/macOS generation still requires passing native isolation probes; see the [platform prerequisites](../README.md#install-natively).
+These CLI commands also work in a native Linux/macOS shell. Use native absolute JSON paths, such as `/home/service/.aiclitoaiapi/codex` or `/Users/service/.aiclitoaiapi/codex`, and existing workspace folders on that host. Linux/macOS generation still requires passing native isolation probes; see the [platform prerequisites](../README.md#install-natively).
 
 ## Complete configuration template
 
@@ -154,7 +154,7 @@ This is a setup template, not a ready-to-serve credential file. Replace `YOUR_US
   "provider": {
     "type": "codex",
     "authentication": "chatgpt",
-    "codexHome": "C:/Users/YOUR_USER/.clilinkapi/codex",
+    "codexHome": "C:/Users/YOUR_USER/.aiclitoaiapi/codex",
     "allowedModels": [],
     "allowUnqualifiedWindowsExecution": true,
     "allowProjectSkills": true,
@@ -283,7 +283,7 @@ To restrict both, use:
 }
 ```
 
-These are provider fragments, not complete configuration files. Preserve the other provider fields and your existing API key. The settings are independent: for example, you can allow skills while rejecting symbolic links. Stop and restart the server after editing the private configuration. For compiled execution, run `npm run build` after updating application source, then restart with `npm start -- "~/.clilinkapi/clilinkapi.json"`.
+These are provider fragments, not complete configuration files. Preserve the other provider fields and your existing API key. The settings are independent: for example, you can allow skills while rejecting symbolic links. Stop and restart the server after editing the private configuration. For compiled execution, run `npm run build` after updating application source, then restart with `npm start -- "~/.aiclitoaiapi/aiclitoaiapi.json"`.
 
 ### Project skills
 
@@ -388,7 +388,7 @@ There is no unauthenticated health route, root-page UI, Responses API, or embedd
 For a local test under the runtime account, this PowerShell example reads the key without printing it:
 
 ```powershell
-$configFile = Join-Path $HOME '.clilinkapi/clilinkapi.json'
+$configFile = Join-Path $HOME '.aiclitoaiapi/aiclitoaiapi.json'
 $gatewayConfig = Get-Content -LiteralPath $configFile -Raw | ConvertFrom-Json
 $gatewayBase = 'http://127.0.0.1:3000/v1'
 $requestHeaders = @{ Authorization = 'Bearer ' + $gatewayConfig.auth.apiKey }
@@ -430,7 +430,7 @@ Configuration does not hot-reload. Stop the server, edit its private file, and r
 To rotate a key:
 
 ```powershell
-aiclitoaiapi rotate-key "~/.clilinkapi/clilinkapi.json"
+aiclitoaiapi rotate-key "~/.aiclitoaiapi/aiclitoaiapi.json"
 ```
 
 Restart the server and update n8n's stored key. A running process continues using its old in-memory configuration until restarted.
@@ -438,7 +438,7 @@ Restart the server and update n8n's stored key. A running process continues usin
 For permission repair:
 
 ```powershell
-aiclitoaiapi secure-config "~/.clilinkapi/clilinkapi.json"
+aiclitoaiapi secure-config "~/.aiclitoaiapi/aiclitoaiapi.json"
 ```
 
 The configuration directory must be dedicated and contain only the config file and its configured `codex` child folder. This command refuses unrelated entries, symlinks, filesystem roots, and the user's home directory itself. A Codex home elsewhere must be secured separately. Preserve backups in a private location outside this dedicated directory and outside every workspace.

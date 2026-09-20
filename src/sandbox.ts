@@ -24,10 +24,10 @@ export async function probeIsolation(rpc: Rpc, workspace: Workspace, home: strin
   requireNativePlatform(allowUnqualifiedWindowsExecution);
   if (process.platform === 'win32' && allowUnqualifiedWindowsExecution) return;
   const nonce = randomUUID();
-  const local = path.join(workspace.path, `.clilinkapi-probe-${nonce}`);
-  const outside = path.join(home, `.clilinkapi-probe-${nonce}`);
-  const escaped = path.join(workspace.path, `.clilinkapi-link-${nonce}`);
-  const output = path.join(workspace.path, `.clilinkapi-write-${nonce}`);
+  const local = path.join(workspace.path, `.aiclitoaiapi-probe-${nonce}`);
+  const outside = path.join(home, `.aiclitoaiapi-probe-${nonce}`);
+  const escaped = path.join(workspace.path, `.aiclitoaiapi-link-${nonce}`);
+  const output = path.join(workspace.path, `.aiclitoaiapi-write-${nonce}`);
   // Fresh harmless sentinels only; never read real credentials in a probe.
   const cleanup = [local, outside, escaped, output];
   try {

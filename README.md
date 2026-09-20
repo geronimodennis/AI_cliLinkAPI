@@ -1,6 +1,8 @@
 # AIcliToAIapi
 
-Renamed from CliLinkAPI. Install with `npm install -g aiclitoaiapi` and run `aiclitoaiapi`. Existing configuration remains at `~/.clilinkapi/clilinkapi.json`; the `CLILINKAPI_CONFIG` environment variable and `clilinkapi.example.json` template name remain compatible.
+Install with `npm install -g aiclitoaiapi` and run `aiclitoaiapi`. The default configuration is `~/.aiclitoaiapi/aiclitoaiapi.json`; examples and live-test scripts use `AICLITOAIAPI_CONFIG` and the template is `aiclitoaiapi.example.json`.
+
+Upgrading from an earlier name: existing private configuration and credentials are not moved automatically. Pass the absolute path of your existing configuration to `aiclitoaiapi serve CONFIG` to keep using it. Update script environment variables to `AICLITOAIAPI_CONFIG` and `AICLITOAIAPI_WORKSPACE`. For a new installation, follow setup below using the new default paths.
 
 [npm package](https://www.npmjs.com/package/aiclitoaiapi) · [GitHub repository](https://github.com/geronimodennis/AIcliToAIapi) · [Report an issue](https://github.com/geronimodennis/AIcliToAIapi/issues)
 
@@ -17,7 +19,7 @@ npm install -g aiclitoaiapi
 aiclitoaiapi
 ```
 
-Use `aiclitoaiapi serve` to start with the default configuration, or `aiclitoaiapi serve "/absolute/path/to/clilinkapi.json"` to select a configuration file. Run `aiclitoaiapi` without arguments for the available setup and login commands.
+Use `aiclitoaiapi serve` to start with the default configuration, or `aiclitoaiapi serve "/absolute/path/to/aiclitoaiapi.json"` to select a configuration file. Run `aiclitoaiapi` without arguments for the available setup and login commands.
 
 The npm package includes compiled code and the pinned Codex runtime dependency; no repository checkout or build is needed. Complete the [first-time setup](https://github.com/geronimodennis/AIcliToAIapi/blob/HEAD/docs/configuration.md#first-time-setup) before starting the server. On Windows, use `npm.cmd` and `aiclitoaiapi.cmd` if PowerShell blocks script shims.
 
@@ -42,37 +44,37 @@ The runtime is pinned to Codex CLI/SDK **0.155.0**. Package installation include
 
 ## Configure and sign in
 
-For source installations only, run `npm link` once after building. Then use `aiclitoaiapi serve`, `aiclitoaiapi doctor`, or `aiclitoaiapi serve "C:/path/to/clilinkapi.json"` from any directory. Running `aiclitoaiapi` alone shows help. This links the command to this checkout and still requires Node.js; rebuild after source changes. On Windows, use `aiclitoaiapi.cmd` if PowerShell blocks the generated script. See the [configuration guide](docs/configuration.md#1-install-dependencies) for setup details.
+For source installations only, run `npm link` once after building. Then use `aiclitoaiapi serve`, `aiclitoaiapi doctor`, or `aiclitoaiapi serve "C:/path/to/aiclitoaiapi.json"` from any directory. Running `aiclitoaiapi` alone shows help. This links the command to this checkout and still requires Node.js; rebuild after source changes. On Windows, use `aiclitoaiapi.cmd` if PowerShell blocks the generated script. See the [configuration guide](docs/configuration.md#1-install-dependencies) for setup details.
 
 See the [complete configuration guide](docs/configuration.md) for a full JSON template, every field and default, Windows execution settings, LAN access, n8n setup, verification commands, and troubleshooting.
 
-Copy `clilinkapi.example.json` from the installed package (under `npm root -g` → `aiclitoaiapi`) or source checkout to a temporary template and edit its absolute paths. Only placeholders belong in version control. Use `/home/your-user/.clilinkapi/codex` on Linux or `/Users/your-user/.clilinkapi/codex` on macOS for `provider.codexHome`; the example uses Windows paths. Both workspace directories must already exist. Remove unused workspace entries.
+Copy `aiclitoaiapi.example.json` from the installed package (under `npm root -g` → `aiclitoaiapi`) or source checkout to a temporary template and edit its absolute paths. Only placeholders belong in version control. Use `/home/your-user/.aiclitoaiapi/codex` on Linux or `/Users/your-user/.aiclitoaiapi/codex` on macOS for `provider.codexHome`; the example uses Windows paths. Both workspace directories must already exist. Remove unused workspace entries.
 
 Keep private configuration and Codex home outside **every** workspace, preferably in a dedicated service account's private directory. Workspaces cannot overlap or be filesystem roots. The service rejects custom Codex configuration, hooks, plugins, rules and skills in its dedicated Codex home. Project `.codex`/`.agents` folders may remain in place: the runtime treats the workspace as untrusted and skips project configuration; project skills in `.agents/skills` are allowed by default. Set `provider.allowProjectSkills` to `false` and restart the server to disable workspace skills. Bundled runtime skills remain disabled. Symbolic links and Windows junctions are allowed by default when their resolved targets stay inside the same workspace. Set `provider.allowSymbolicLinks` to `false` and restart to reject all symbolic links and junctions. Broken links, directory cycles, links outside the workspace, and hard-linked files remain blocked. Parent directories may contain Codex configuration or instructions; their presence does not block workspace validation. Use trusted projects and a dedicated runtime account. Do not put credentials in project files.
 
-The CLI expands `~`, literal `$HOME`, `${HOME}`, `%USERPROFILE%`, and `$env:USERPROFILE` at the start of its configuration filename. This also works when your shell does not expand them. For example, Command Prompt users can use `aiclitoaiapi setup "~/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json`. Paths inside the JSON template still need actual absolute paths; replace `YOUR_USER` and the example workspace paths before setup.
+The CLI expands `~`, literal `$HOME`, `${HOME}`, `%USERPROFILE%`, and `$env:USERPROFILE` at the start of its configuration filename. This also works when your shell does not expand them. For example, Command Prompt users can use `aiclitoaiapi setup "~/.aiclitoaiapi/aiclitoaiapi.json" ./aiclitoaiapi.example.json`. Paths inside the JSON template still need actual absolute paths; replace `YOUR_USER` and the example workspace paths before setup.
 
 PowerShell:
 
 ```powershell
-aiclitoaiapi setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
-aiclitoaiapi login "$HOME/.clilinkapi/clilinkapi.json"
-aiclitoaiapi doctor "$HOME/.clilinkapi/clilinkapi.json"
-aiclitoaiapi serve "$HOME/.clilinkapi/clilinkapi.json"
+aiclitoaiapi setup "$HOME/.aiclitoaiapi/aiclitoaiapi.json" ./aiclitoaiapi.example.json
+aiclitoaiapi login "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
+aiclitoaiapi doctor "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
+aiclitoaiapi serve "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 ```
 
 Linux/macOS:
 
 ```sh
-aiclitoaiapi setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
-aiclitoaiapi login "$HOME/.clilinkapi/clilinkapi.json"
-aiclitoaiapi doctor "$HOME/.clilinkapi/clilinkapi.json"
-aiclitoaiapi serve "$HOME/.clilinkapi/clilinkapi.json"
+aiclitoaiapi setup "$HOME/.aiclitoaiapi/aiclitoaiapi.json" ./aiclitoaiapi.example.json
+aiclitoaiapi login "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
+aiclitoaiapi doctor "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
+aiclitoaiapi serve "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 ```
 
 `setup` uses 32 cryptographically random bytes, stores the generated key without printing it, and refuses to overwrite an existing configuration. On Unix it requires private directory/file modes (`0700`/`0600`); on Windows it applies an ACL for the runtime user and SYSTEM. Run under the same account that will run the server. Administrators remain trusted. A private parent directory is required even for key rotation.
 
-If an existing configuration fails the ACL check, run `aiclitoaiapi secure-config "~/.clilinkapi/clilinkapi.json"` as the runtime user. This secures the dedicated directory, configuration file and configured `codex` child folder without changing file contents or rotating the key. It creates that Codex folder if missing. It requires current-user ownership and refuses unrelated entries, links, your home directory and filesystem roots. A Codex home outside that dedicated child location must be secured separately. On Windows, startup permits read/traverse-only access to the configuration's parent folder, but rejects other users' modification rights; the configuration file and Codex storage still require private ACLs. Setup also secures an existing empty directory automatically. If a configuration already exists, continue with `login` or `doctor` instead of rerunning setup.
+If an existing configuration fails the ACL check, run `aiclitoaiapi secure-config "~/.aiclitoaiapi/aiclitoaiapi.json"` as the runtime user. This secures the dedicated directory, configuration file and configured `codex` child folder without changing file contents or rotating the key. It creates that Codex folder if missing. It requires current-user ownership and refuses unrelated entries, links, your home directory and filesystem roots. A Codex home outside that dedicated child location must be secured separately. On Windows, startup permits read/traverse-only access to the configuration's parent folder, but rejects other users' modification rights; the configuration file and Codex storage still require private ACLs. Setup also secures an existing empty directory automatically. If a configuration already exists, continue with `login` or `doctor` instead of rerunning setup.
 
 `login` invokes the official Codex login process with ChatGPT authentication forced. The official process may print a login URL or device code for the human sign-in flow; the aiclitoaiapi never prints stored credentials. If browser login is unavailable, use `login CONFIG --device-auth` where supported by your workspace. Supported Codex credential storage remains in `provider.codexHome` or its supported OS credential store. No credential file is parsed or copied by the aiclitoaiapi. A compatible existing **dedicated** Codex home may be configured; a browser or desktop login is not assumed to be shared.
 
@@ -81,7 +83,7 @@ If login fails, check your ChatGPT subscription, workspace Codex permissions, SS
 Update configuration while stopped, preserve private permissions, and restart; there is no hot reload. Rotation:
 
 ```sh
-aiclitoaiapi rotate-key /absolute/private/clilinkapi.json
+aiclitoaiapi rotate-key /absolute/private/aiclitoaiapi.json
 ```
 
 Restart and update clients through your own secure secret-distribution method. Running processes retain the previous key until restarted. Do not print the key into a terminal or commit it. Never run multiple aiclitoaiapi instances against overlapping project trees; see the concurrency limitation in the security document.
@@ -109,11 +111,11 @@ Text messages, function tools and results, `tool_choice: auto/none`, `n: 1`, tex
 
 ## Requests without exposing the key
 
-The following Node example loads the private config locally. Run it as the client identity authorized to read that config; distribute only the aiclitoaiapi key to other clients using your secure method. Set `CLILINKAPI_CONFIG` to its absolute path.
+The following Node example loads the private config locally. Run it as the client identity authorized to read that config; distribute only the aiclitoaiapi key to other clients using your secure method. Set `AICLITOAIAPI_CONFIG` to its absolute path.
 
 ```js
 import { readFile } from 'node:fs/promises';
-const config = JSON.parse(await readFile(process.env.CLILINKAPI_CONFIG, 'utf8'));
+const config = JSON.parse(await readFile(process.env.AICLITOAIAPI_CONFIG, 'utf8'));
 const headers = {
   Authorization: `Bearer ${config.auth.apiKey}`,
   'Content-Type': 'application/json',
@@ -151,7 +153,7 @@ npm run check
 npm test
 npm run build
 npm run test:isolation
-# Set CLILINKAPI_CONFIG to an actual private configuration after ChatGPT login:
+# Set AICLITOAIAPI_CONFIG to an actual private configuration after ChatGPT login:
 npm run test:live
 ```
 

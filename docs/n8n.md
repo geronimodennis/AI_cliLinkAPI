@@ -8,7 +8,7 @@ AIcliToAIapi implements the text Chat Completions and function-tool subset used 
 
 ## Gateway configuration
 
-Add this top-level object to your private `clilinkapi.json`, replacing `project-a` with an existing workspace ID, then restart the gateway:
+Add this top-level object to your private `aiclitoaiapi.json`, replacing `project-a` with an existing workspace ID, then restart the gateway:
 
 ```json
 "compatibility": {

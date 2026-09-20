@@ -27,7 +27,7 @@ test('strict configuration rejects empty/placeholder keys, extra fields, modes a
 test('canonical workspace validation rejects roots, secrets, aliases, overlapping and nonexistent dirs', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-test-'));
   try {
-    const home = path.join(root, 'home'); const ws = path.join(root, 'workspace'); const file = path.join(root, 'clilinkapi.json');
+    const home = path.join(root, 'home'); const ws = path.join(root, 'workspace'); const file = path.join(root, 'aiclitoaiapi.json');
     await mkdir(home); await mkdir(ws); await writeFile(file, '{}');
     const c = fixtureConfig(); c.provider.codexHome = home; c.workspaces = { p: { path: ws, access: 'read-only' } };
     await validatePaths(c, file);

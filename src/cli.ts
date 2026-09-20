@@ -14,12 +14,12 @@ import { requireNativePlatform } from './sandbox.js';
 import { normalizeError } from './errors.js';
 import { startupMessage } from './startup.js';
 
-export const defaultConfig = () => path.join(os.homedir(), '.clilinkapi', 'clilinkapi.json');
+export const defaultConfig = () => path.join(os.homedir(), '.aiclitoaiapi', 'aiclitoaiapi.json');
 export function resolveConfigFilename(filename: string): string {
   // cmd.exe leaves $HOME literal; quoted tilde paths also need application expansion.
   const homePrefix = /^(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE)(?=[\\/]|$)/i;
   const expanded = filename.replace(homePrefix, () => os.homedir());
-  if (!path.isAbsolute(expanded)) throw new Error('Configuration filename must be absolute. Use "~/.clilinkapi/clilinkapi.json" or a full path such as "C:/Users/your-user/.clilinkapi/clilinkapi.json".');
+  if (!path.isAbsolute(expanded)) throw new Error('Configuration filename must be absolute. Use "~/.aiclitoaiapi/aiclitoaiapi.json" or a full path such as "C:/Users/your-user/.aiclitoaiapi/aiclitoaiapi.json".');
   return path.normalize(expanded);
 }
 async function privateDirectory(directory: string) {
@@ -112,7 +112,7 @@ async function main() {
   if (command === 'secure-config') { await secureConfig(filename); console.log('Configuration permissions repaired. File contents and API key were not changed.'); return; }
   if (command === 'setup') { if (!template) throw new Error('Usage: aiclitoaiapi setup ABSOLUTE_CONFIG_PATH TEMPLATE_JSON_PATH'); await setup(filename, template); console.log('Configuration created privately. Key was not printed.'); return; }
   if (command === 'rotate-key') { await rotate(filename); console.log('AIcliToAIapi key rotated. Restart the aiclitoaiapi and update clients. Key was not printed.'); return; }
-  if (!['serve', 'login', 'doctor'].includes(command)) { console.log('Commands: setup CONFIG TEMPLATE | secure-config CONFIG | rotate-key CONFIG | login CONFIG [--device-auth] | doctor CONFIG | serve CONFIG\nDefault CONFIG: user home/.clilinkapi/clilinkapi.json'); return; }
+  if (!['serve', 'login', 'doctor'].includes(command)) { console.log('Commands: setup CONFIG TEMPLATE | secure-config CONFIG | rotate-key CONFIG | login CONFIG [--device-auth] | doctor CONFIG | serve CONFIG\nDefault CONFIG: user home/.aiclitoaiapi/aiclitoaiapi.json'); return; }
   await verifyConfigDirectory(path.dirname(filename)); await verifyPrivate(filename);
   const config = await loadConfig(filename); await verifyPrivate(config.provider.codexHome);
   await verifyRuntime(config.provider.codexHome);

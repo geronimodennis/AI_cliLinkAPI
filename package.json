@@ -1,6 +1,6 @@
 {
   "name": "aiclitoaiapi",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Native CLI gateway for a ChatGPT-authenticated Codex runtime.",
   "repository": {
     "type": "git",
@@ -18,7 +18,7 @@
     "dist/src/**/*.js",
     "docs/*.md",
     "examples/client.mjs",
-    "clilinkapi.example.json"
+    "aiclitoaiapi.example.json"
   ],
   "publishConfig": {
     "access": "public",

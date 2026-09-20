@@ -3,7 +3,8 @@ dist/
 .npm-cache/
 .env
 *.local.json
-clilinkapi.json
+/workspaces/
+aiclitoaiapi.json
 auth.json
 .codex/
 coverage/

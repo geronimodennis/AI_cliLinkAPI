@@ -9,17 +9,17 @@ import { setup, rotate, secureConfig, resolveConfigFilename, defaultConfig } fro
 import { verifyPrivate, verifyConfigDirectory } from '../src/permissions.js';
 test('configuration paths expand home shorthand when the shell leaves it literal', () => {
   for (const prefix of ['~', '$HOME', '${HOME}', '%USERPROFILE%', '$env:USERPROFILE']) {
-    assert.equal(resolveConfigFilename(prefix + '/.clilinkapi/clilinkapi.json'), defaultConfig());
+    assert.equal(resolveConfigFilename(prefix + '/.aiclitoaiapi/aiclitoaiapi.json'), defaultConfig());
   }
   assert.equal(resolveConfigFilename(defaultConfig()), defaultConfig());
-  assert.throws(() => resolveConfigFilename('clilinkapi.json'), /must be absolute/);
-  assert.throws(() => resolveConfigFilename('$HOME_OTHER/clilinkapi.json'), /must be absolute/);
+  assert.throws(() => resolveConfigFilename('aiclitoaiapi.json'), /must be absolute/);
+  assert.throws(() => resolveConfigFilename('$HOME_OTHER/aiclitoaiapi.json'), /must be absolute/);
 });
 test('setup creates a private key, never overwrites, rotation changes it', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-setup-'));
   try {
     const workspace = path.join(root, 'project'); await mkdir(workspace);
-    const template = path.join(root, 'template.json'); const filename = path.join(root, 'private', 'clilinkapi.json');
+    const template = path.join(root, 'template.json'); const filename = path.join(root, 'private', 'aiclitoaiapi.json');
     await mkdir(path.dirname(filename)); // Existing directory with inherited/default permissions.
     await writeFile(template, JSON.stringify({ auth: { apiKey: 'REPLACE' }, provider: { type: 'codex', authentication: 'chatgpt', codexHome: path.join(root, 'codex') }, workspaces: { p: { path: workspace, access: 'read-only' } } }));
     await setup(filename, template); await verifyPrivate(filename); await verifyPrivate(path.dirname(filename));
@@ -39,7 +39,7 @@ test('setup creates a private key, never overwrites, rotation changes it', async
 test('permissions repair preserves existing configuration and rejects shared directories', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-acl-'));
   try {
-    const filename = path.join(root, 'clilinkapi.json');
+    const filename = path.join(root, 'aiclitoaiapi.json');
     const contents = '{"auth":{"apiKey":"existing-key-must-not-change"}}\n';
     await writeFile(filename, contents);
     await secureConfig(filename);
@@ -57,10 +57,10 @@ test('permissions repair preserves existing configuration and rejects shared dir
 test('Windows permits read-only parent access but rejects writable parents and readable secret files', { skip: process.platform !== 'win32' }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-parent-acl-'));
   try {
-    const filename = path.join(root, 'clilinkapi.json'); await writeFile(filename, '{}'); await secureConfig(filename);
+    const filename = path.join(root, 'aiclitoaiapi.json'); await writeFile(filename, '{}'); await secureConfig(filename);
     const addRule = async (target: string, rights: string) => {
-      const script = `$ErrorActionPreference='Stop'; $p=$env:CLILINKAPI_TEST_PATH; $isDir=[System.IO.Directory]::Exists($p); $acl=if($isDir){[System.IO.Directory]::GetAccessControl($p)}else{[System.IO.File]::GetAccessControl($p)}; $sid=[System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-545'); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($sid,$env:CLILINKAPI_TEST_RIGHTS,'Allow')); if($isDir){[System.IO.Directory]::SetAccessControl($p,$acl)}else{[System.IO.File]::SetAccessControl($p,$acl)}`;
-      await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { env: { ...process.env, CLILINKAPI_TEST_PATH: target, CLILINKAPI_TEST_RIGHTS: rights }, windowsHide: true });
+      const script = `$ErrorActionPreference='Stop'; $p=$env:AICLITOAIAPI_TEST_PATH; $isDir=[System.IO.Directory]::Exists($p); $acl=if($isDir){[System.IO.Directory]::GetAccessControl($p)}else{[System.IO.File]::GetAccessControl($p)}; $sid=[System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-545'); $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($sid,$env:AICLITOAIAPI_TEST_RIGHTS,'Allow')); if($isDir){[System.IO.Directory]::SetAccessControl($p,$acl)}else{[System.IO.File]::SetAccessControl($p,$acl)}`;
+      await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { env: { ...process.env, AICLITOAIAPI_TEST_PATH: target, AICLITOAIAPI_TEST_RIGHTS: rights }, windowsHide: true });
     };
     await addRule(root, 'ReadAndExecute');
     await verifyConfigDirectory(root); await verifyPrivate(filename);
