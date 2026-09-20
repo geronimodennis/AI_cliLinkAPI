@@ -9,18 +9,23 @@ import type { Provider } from './providers/types.js';
 import { parseRequest, selectModel, translate } from './requests.js';
 import { ExecutionSlots } from './sessions.js';
 import { Redactor } from './redaction.js';
+import { requestEndpoint, terminalRequestLog } from './logging.js';
 
 const json = (response: ServerResponse, status: number, body: unknown) => { response.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); response.end(JSON.stringify(body)); };
 async function sse(response: ServerResponse, body: unknown, signal: AbortSignal) {
   signal.throwIfAborted();
   if (!response.write(`data: ${typeof body === 'string' ? body : JSON.stringify(body)}\n\n`)) await once(response, 'drain', { signal });
 }
-export function createServer(config: Config, provider: Provider, log: (value: Record<string, unknown>) => void = value => console.log(JSON.stringify(value))) {
+export function createServer(config: Config, provider: Provider, log: (value: Record<string, unknown>) => void = terminalRequestLog) {
   const slots = new ExecutionSlots(config.server.maxConcurrency);
   const discovery = new ExecutionSlots(config.server.maxConcurrency);
   const controllers = new Set<AbortController>();
   const server = http.createServer(async (request, response) => {
     const id = 'chatcmpl-' + randomUUID(); const started = Date.now();
+    const metadata = { request_id: id, method: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].includes(request.method ?? '') ? request.method : 'OTHER', endpoint: requestEndpoint(request.url) };
+    const record = (value: Record<string, unknown>) => log({ ...metadata, timestamp: new Date().toISOString(), ...value });
+    record({ event: 'request_started' });
+    let failureStatus: number | undefined; let failureCode: string | undefined; let requestedStream = false;
     const controller = new AbortController(); controllers.add(controller);
     const signal = controller.signal;
     let release: (() => void) | undefined; let streaming = false; let timedOut = false;
@@ -51,6 +56,7 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
       } finally { signal.removeEventListener('abort', abortRead); }
       let value: unknown; try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new AIcliToAIapiError(400, 'invalid_json', 'Request body must be valid JSON.'); }
       const parsed = parseRequest(value);
+      requestedStream = parsed.stream;
       const selected = selectModel(parsed, await provider.models(signal), config.provider);
       if (parsed.stream && !provider.capabilities.streaming) throw new AIcliToAIapiError(400, 'stream_unsupported', 'Provider does not support streaming.');
       const created = Math.floor(Date.now() / 1000);
@@ -84,12 +90,17 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
       if (!complete) throw new AIcliToAIapiError(502, 'missing_final_response', 'Codex ended without a final response.');
     } catch (error) {
       const safe = timedOut ? new AIcliToAIapiError(504, 'timeout', 'Request timed out; execution was cancelled. Changes may already have occurred.') : normalizeError(error);
+      failureStatus = signal.aborted && !timedOut ? 499 : safe.status;
+      failureCode = signal.aborted && !timedOut ? 'cancelled' : safe.code;
       if (!response.destroyed && !response.writableEnded) {
         if (streaming) { await sse(response, errorBody(safe), AbortSignal.timeout(1000)).catch(() => undefined); response.end(); }
         else { if (safe.status === 401) response.setHeader('www-authenticate', 'Bearer'); json(response, safe.status, errorBody(safe)); }
       }
-      log({ request_id: id, event: 'request_error', code: safe.code, status: safe.status });
-    } finally { clearTimeout(timer); release?.(); controllers.delete(controller); response.off('close', disconnect); request.off('aborted', disconnect); log({ request_id: id, event: 'request_finished', duration_ms: Date.now() - started, status: response.statusCode }); }
+      record({ event: 'request_error', code: failureCode, status: failureStatus });
+    } finally {
+      clearTimeout(timer); release?.(); controllers.delete(controller); response.off('close', disconnect); request.off('aborted', disconnect);
+      record({ event: 'request_finished', duration_ms: Date.now() - started, status: failureStatus ?? response.statusCode, ...(response.headersSent ? { http_status: response.statusCode } : {}), stream: requestedStream, ...(failureCode ? { code: failureCode } : {}) });
+    }
   });
   server.requestTimeout = config.server.timeoutMs;
   server.headersTimeout = Math.min(config.server.timeoutMs, 10000);

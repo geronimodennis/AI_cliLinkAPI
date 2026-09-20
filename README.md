@@ -44,6 +44,8 @@ The runtime is pinned to Codex CLI/SDK **0.155.0**. Package installation include
 
 ## Configure and sign in
 
+Each API request prints aligned terminal rows when it starts and finishes, with a UTC timestamp, method, endpoint, status, duration, request ID, and JSON/stream mode. Errors include an error code; a failed SSE stream also shows its original HTTP status. Request bodies, responses, authorization headers, and query strings are not logged. Unknown paths are shown as `<unknown route>`. Logs go to the terminal; no log files are created automatically.
+
 For source installations only, run `npm link` once after building. Then use `aiclitoaiapi serve`, `aiclitoaiapi doctor`, or `aiclitoaiapi serve "C:/path/to/aiclitoaiapi.json"` from any directory. Running `aiclitoaiapi` alone shows help. This links the command to this checkout and still requires Node.js; rebuild after source changes. On Windows, use `aiclitoaiapi.cmd` if PowerShell blocks the generated script. See the [configuration guide](docs/configuration.md#1-install-dependencies) for setup details.
 
 See the [complete configuration guide](docs/configuration.md) for a full JSON template, every field and default, Windows execution settings, LAN access, n8n setup, verification commands, and troubleshooting.

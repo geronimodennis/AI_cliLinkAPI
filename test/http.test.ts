@@ -8,7 +8,29 @@ import { createServer } from '../src/server.js';
 import { parseConfig } from '../src/config.js';
 import type { Provider, Generation, GenerationEvent } from '../src/providers/types.js';
 import { AIcliToAIapiError } from '../src/errors.js';
+import { formatRequestLog } from '../src/logging.js';
 const key = randomBytes(32).toString('base64url');
+test('request logs pair starts and finishes, hide URL secrets, and report streaming failures', async () => {
+  const f = await fixture();
+  try {
+    await f.send();
+    await fetch(f.base + '/private-secret?token=secret-query', { headers: f.headers });
+    f.provider.mode = 'buffered';
+    await (await f.send({ stream: true, messages: [{ role: 'user', content: 'private prompt' }] })).text();
+    const entries = f.logs as Record<string, unknown>[];
+    const starts = entries.filter(e => e.event === 'request_started');
+    const finishes = entries.filter(e => e.event === 'request_finished');
+    assert.equal(starts.length, 3); assert.equal(finishes.length, 3);
+    for (const start of starts) assert.equal(finishes.filter(e => e.request_id === start.request_id).length, 1);
+    assert.equal(finishes[0]!.status, 200);
+    assert.equal(finishes[1]!.status, 404); assert.equal(finishes[1]!.endpoint, '<unknown route>');
+    assert.equal(finishes[2]!.status, 502); assert.equal(finishes[2]!.http_status, 200);
+    assert.equal(finishes[2]!.code, 'stream_unavailable');
+    const rendered = entries.map(formatRequestLog).filter(Boolean).join('\n');
+    assert.match(rendered, /START/); assert.match(rendered, /ERROR/); assert.match(rendered, /http=200/);
+    for (const secret of [key, 'private-secret', 'secret-query', 'private prompt']) assert.ok(!JSON.stringify(entries).includes(secret));
+  } finally { await f.close(); }
+});
 class Fake implements Provider {
   readonly capabilities = { streaming: true, sessions: false };
   calls = 0; modelCalls = 0; cancelled = false;
