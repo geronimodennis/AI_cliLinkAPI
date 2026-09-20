@@ -1,0 +1,148 @@
+# CliLinkAPI
+
+Native Node.js/strict TypeScript gateway for a **ChatGPT-authenticated Codex** runtime. The clilinkapi key protects this HTTP service; it is not an OpenAI API key. No containers, VMs, direct OpenAI API client, browser-cookie extraction, or unofficial ChatGPT endpoints are used.
+
+**Current delivery status:** HTTP routing, Codex app-server adapter, discovery, permissions profiles, setup, cancellation, and tests are implemented. By default, native Windows agent execution is attempted without isolation qualification probes; setting `provider.allowUnqualifiedWindowsExecution=false` restores the platform block. The available Windows host failed sandbox initialization. Linux/macOS execution requires the real native isolation probes to pass on that host; those platforms have not been executed during this build. A successful live Codex completion is still unverified because runtime ChatGPT login and private configuration were unavailable. See [verification](docs/verification.md) and [security](docs/security.md). This is not a claim of a production-qualified cross-platform release.
+
+## Install natively
+
+Install Node.js 22 or 24 LTS and use a native shell:
+
+```sh
+npm ci
+npm run check
+npm test
+npm run build
+```
+
+- **Windows:** PowerShell on native Windows x64/arm64. Setup, ACLs, login, model discovery and HTTP functions run natively; unqualified coding-agent execution is enabled by default (see below). WSL, containers and VMs are not workarounds used by this project.
+- **Linux:** native x64/arm64; install distribution `bubblewrap` (`sudo apt install bubblewrap` on Debian/Ubuntu, `sudo dnf install bubblewrap` on Fedora). User namespaces and the applicable AppArmor policy must permit its execution. Do not disable security protections merely to make the test pass.
+- **macOS:** native x64/arm64; Codex uses Seatbelt. The OS must permit the native sandbox. Run the integration tests on the intended runtime account.
+
+The runtime is pinned to Codex CLI/SDK **0.155.0**. Package installation includes the official platform binary. No global `codex` command is needed. Changes to the pinned version require requalification of protocol, permission profiles and sandbox tests.
+
+## Configure and sign in
+
+See the [complete configuration guide](docs/configuration.md) for a full JSON template, every field and default, Windows execution settings, LAN access, n8n setup, verification commands, and troubleshooting.
+
+Copy `clilinkapi.example.json` to a temporary template and edit its absolute paths. Only placeholders belong in version control. Use `/home/your-user/.clilinkapi/codex` on Linux or `/Users/your-user/.clilinkapi/codex` on macOS for `provider.codexHome`; the example uses Windows paths. Both workspace directories must already exist. Remove unused workspace entries.
+
+Keep private configuration and Codex home outside **every** workspace, preferably in a dedicated service account's private directory. Workspaces cannot overlap or be filesystem roots. The service rejects custom Codex configuration, hooks, plugins, rules and skills in its dedicated Codex home. Project `.codex`/`.agents` folders may remain in place: the runtime treats the workspace as untrusted and skips project configuration; project skills in `.agents/skills` are allowed by default. Set `provider.allowProjectSkills` to `false` and restart the server to disable workspace skills. Bundled runtime skills remain disabled. Symbolic links and Windows junctions are allowed by default when their resolved targets stay inside the same workspace. Set `provider.allowSymbolicLinks` to `false` and restart to reject all symbolic links and junctions. Broken links, directory cycles, links outside the workspace, and hard-linked files remain blocked. Parent directories may contain Codex configuration or instructions; their presence does not block workspace validation. Use trusted projects and a dedicated runtime account. Do not put credentials in project files.
+
+The CLI expands `~`, literal `$HOME`, `${HOME}`, `%USERPROFILE%`, and `$env:USERPROFILE` at the start of its configuration filename. This also works when your shell does not expand them. For example, Command Prompt users can use `npm run clilinkapi -- setup "~/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json`. Paths inside the JSON template still need actual absolute paths; replace `YOUR_USER` and the example workspace paths before setup.
+
+PowerShell:
+
+```powershell
+npm run clilinkapi -- setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
+npm run clilinkapi -- login "$HOME/.clilinkapi/clilinkapi.json"
+npm run clilinkapi -- doctor "$HOME/.clilinkapi/clilinkapi.json"
+npm run clilinkapi -- serve "$HOME/.clilinkapi/clilinkapi.json"
+```
+
+Linux/macOS:
+
+```sh
+npm run clilinkapi -- setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
+npm run clilinkapi -- login "$HOME/.clilinkapi/clilinkapi.json"
+npm run clilinkapi -- doctor "$HOME/.clilinkapi/clilinkapi.json"
+npm run clilinkapi -- serve "$HOME/.clilinkapi/clilinkapi.json"
+```
+
+`setup` uses 32 cryptographically random bytes, stores the generated key without printing it, and refuses to overwrite an existing configuration. On Unix it requires private directory/file modes (`0700`/`0600`); on Windows it applies an ACL for the runtime user and SYSTEM. Run under the same account that will run the server. Administrators remain trusted. A private parent directory is required even for key rotation.
+
+If an existing configuration fails the ACL check, run `npm run clilinkapi -- secure-config "~/.clilinkapi/clilinkapi.json"` as the runtime user. This secures the dedicated directory, configuration file and configured `codex` child folder without changing file contents or rotating the key. It creates that Codex folder if missing. It requires current-user ownership and refuses unrelated entries, links, your home directory and filesystem roots. A Codex home outside that dedicated child location must be secured separately. On Windows, startup permits read/traverse-only access to the configuration's parent folder, but rejects other users' modification rights; the configuration file and Codex storage still require private ACLs. Setup also secures an existing empty directory automatically. If a configuration already exists, continue with `login` or `doctor` instead of rerunning setup.
+
+`login` invokes the official Codex login process with ChatGPT authentication forced. The official process may print a login URL or device code for the human sign-in flow; the clilinkapi never prints stored credentials. If browser login is unavailable, use `login CONFIG --device-auth` where supported by your workspace. Supported Codex credential storage remains in `provider.codexHome` or its supported OS credential store. No credential file is parsed or copied by the clilinkapi. A compatible existing **dedicated** Codex home may be configured; a browser or desktop login is not assumed to be shared.
+
+If login fails, check your ChatGPT subscription, workspace Codex permissions, SSO/device-code policy, system clock, and outbound access. Re-run official login as the runtime user for expired sessions. An API-key-authenticated account is rejected. Usage limits are returned as upstream errors, never bypassed. CliLinkAPI startup does not require upstream availability; protected `/v1/models` reports login problems without attempting generation.
+
+Update configuration while stopped, preserve private permissions, and restart; there is no hot reload. Rotation:
+
+```sh
+npm run clilinkapi -- rotate-key /absolute/private/clilinkapi.json
+```
+
+Restart and update clients through your own secure secret-distribution method. Running processes retain the previous key until restarted. Do not print the key into a terminal or commit it. Never run multiple clilinkapi instances against overlapping project trees; see the concurrency limitation in the security document.
+
+## API
+
+All endpoints require `Authorization: Bearer <clilinkapi-key>`. One shared key gives its holder access to **all** configured workspaces. There is no per-workspace identity or privilege separation between key holders.
+
+`GET /v1/models` queries the logged-in runtime's `model/list`; it returns visible models, optionally intersected with `provider.allowedModels`. An empty allowlist means all discovered visible models. `reasoning_efforts` is a clilinkapi extension. No static/fabricated model catalog is shipped. A runtime catalog is not a guarantee of remaining quota or a successful future request.
+
+`POST /v1/chat/completions` supports only:
+
+| Field | Behavior |
+| --- | --- |
+| `messages` | Required text-only system, developer, user, assistant messages; at least one user message |
+| `model` | Optional discovered model; otherwise configured default, catalog default, or first discovered model |
+| `reasoning_effort` | Separate native setting validated against that model's discovered efforts |
+| `stream` | Boolean, default false |
+
+`X-Workspace-ID` selects a configured workspace. Clients such as n8n may omit it when `compatibility.defaultWorkspace` is configured. Arbitrary directories and session IDs are rejected. New conversations start ephemeral Codex threads; matching external tool results resume the waiting turn using a bounded, one-use continuation. Send conversation history each time. System/developer messages become Codex developer instructions with role labels; Codex's own instructions remain in force. See [n8n setup and limitations](docs/n8n.md).
+
+Friendly effort labels `Light`, `Medium`, `Strong` map to `low`, `medium`, `high` only if supported. Other values must appear in discovery. Defaults can be set as `provider.defaultModel` and `provider.defaultReasoning`. Invalid defaults or overrides are rejected, never downgraded. Effort is never added to prompt text and is unrelated to verbosity or output limits.
+
+Text messages, function tools and results, `tool_choice: auto/none`, `n: 1`, text response format, and streaming usage requests are supported. Sampling controls, token limits, image inputs, structured output and forced tool choices return 400. Use clients with automatic retries disabled: a failed/timed-out call may already have edited files or invoked an external tool.
+
+## Requests without exposing the key
+
+The following Node example loads the private config locally. Run it as the client identity authorized to read that config; distribute only the clilinkapi key to other clients using your secure method. Set `CLILINKAPI_CONFIG` to its absolute path.
+
+```js
+import { readFile } from 'node:fs/promises';
+const config = JSON.parse(await readFile(process.env.CLILINKAPI_CONFIG, 'utf8'));
+const headers = {
+  Authorization: `Bearer ${config.auth.apiKey}`,
+  'Content-Type': 'application/json',
+  'X-Workspace-ID': 'project-a'
+};
+const catalog = await fetch('http://127.0.0.1:3000/v1/models', { headers }).then(r => r.json());
+const model = catalog.data[0].id;
+const request = { model, reasoning_effort: 'Light', messages: [
+  { role: 'user', content: 'Describe this project without modifying it.' }
+] };
+const response = await fetch('http://127.0.0.1:3000/v1/chat/completions', {
+  method: 'POST', headers, body: JSON.stringify(request)
+});
+console.log(await response.json());
+
+// Real SSE. Incremental final-answer deltas only, with bounded redaction buffering.
+const streaming = await fetch('http://127.0.0.1:3000/v1/chat/completions', {
+  method: 'POST', headers, body: JSON.stringify({ ...request, stream: true })
+});
+for await (const chunk of streaming.body) process.stdout.write(chunk);
+```
+
+Use a reasoning effort listed for the selected model if `low` is unavailable. [OpenAI SDK client example](examples/client.mjs) uses `baseURL`, the locally generated clilinkapi key, workspace selection and `maxRetries: 0`.
+
+Non-streaming responses contain the actual labelled Codex final answer, with host-path/known-secret redaction, at `choices[0].message.content`. Usage is included only when reported by Codex. Tool activity and commentary are excluded. SSE emits final-answer deltas, then a stop chunk and `[DONE]`; errors after headers are SSE error objects followed by connection close, without a successful terminator. If Codex provides only a buffered answer, streaming returns `stream_unavailable`; it is not turned into fake tokens. Redaction holds a small suffix and unfinished word, so very short responses may appear together. Ordinary chat completions generally do not run commands; **these requests can modify files and execute commands** within their configured permissions.
+
+## Deployment and verification
+
+CliLinkAPI requires a dedicated Codex home without custom configuration, hooks, plugins, rules, or skills. Codex can create `skills/.system` during normal startup; CliLinkAPI permits the pinned runtime's bundled skill directories and explicitly disables those skills. Other skill directories remain rejected. A startup rejection identifies the blocked entry so it can be relocated without deleting credentials.
+
+Bind to localhost by default. For network deployment terminate HTTPS at a maintained reverse proxy, disable response buffering for SSE, set upstream timeouts above the clilinkapi timeout, apply request-size/rate limits, and firewall direct access to the clilinkapi port. Direct TLS is not implemented. Do not transmit bearer keys over public plaintext HTTP. No permissive CORS policy is installed.
+
+```sh
+npm run check
+npm test
+npm run build
+npm run test:isolation
+# Set CLILINKAPI_CONFIG to an actual private configuration after ChatGPT login:
+npm run test:live
+```
+
+`test:live` starts a local clilinkapi and requests a real response through HTTP, then checks a temporary permitted file and denied external sentinel reads/writes through further HTTP requests. It cleans up only those uniquely named test files. On Linux/macOS, each eligible generation first probes real sandbox reads, writes, link escapes and subprocess inheritance. Windows generation skips these probes by default; native sandbox initialization may still fail. CI configures Node 22/24 on Windows/Linux/macOS; it does not store ChatGPT credentials or claim to run authenticated live tests.
+
+See [architecture and adapter guide](docs/architecture.md), [security boundaries](docs/security.md), and [checks executed](docs/verification.md).
+
+## Configure unqualified Windows execution
+
+`provider.allowUnqualifiedWindowsExecution` defaults to `true` when omitted. Set it to `false` in your private configuration to block Windows execution, then restart the server. Existing explicit `false` values remain respected.
+
+This setting bypasses the Windows platform gate and skips the per-generation isolation probes on Windows only. It does not certify read, ACL, descendant-process, or network isolation. Native permission profiles are still requested; Codex may still reject a turn or command if the Windows sandbox cannot initialize. There is no automatic unrestricted fallback. Linux/macOS continue to require their probes regardless of this setting.
+
+The startup banner and `doctor` report unqualified execution explicitly. Authentication, configuration ACL checks, workspace validation, and dedicated Codex home checks remain enabled. Use a dedicated runtime account and trusted clients; workspace confinement is not verified in this mode.
+

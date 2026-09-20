@@ -1,0 +1,12 @@
+{
+  "server": { "host": "127.0.0.1", "port": 3000, "timeoutMs": 180000, "maxConcurrency": 2, "maxBodyBytes": 262144 },
+  "auth": { "apiKey": "REPLACE_WITH_A_SECURE_RANDOM_KEY" },
+  "compatibility": { "defaultWorkspace": "project-a", "toolTimeoutMs": 300000, "maxPendingTools": 8 },
+  "provider": { "type": "codex", "authentication": "chatgpt", "codexHome": "C:/Users/YOUR_USER/.clilinkapi/codex", "allowedModels": [], "allowUnqualifiedWindowsExecution": true, "allowProjectSkills": true, "allowSymbolicLinks": true },
+  "workspaces": {
+    "project-a": { "path": "C:/Projects/project-a", "access": "read-write" },
+    "reference-docs": { "path": "C:/Documents/reference", "access": "read-only" }
+  }
+}
+
+

@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.npm-cache/
+.env
+*.local.json
+clilinkapi.json
+auth.json
+.codex/
+coverage/
+*.log
+.tmp-schema/
+.test-tmp/
+*.tmp
+gateway.json
