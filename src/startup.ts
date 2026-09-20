@@ -10,7 +10,7 @@ export function startupMessage(config: Config, address: AddressInfo): string {
   return [
     '',
     '  +----------------------------------------------------------+',
-    '  |  CliLinkAPI                                              |',
+    '  |  AIcliToAIapi                                              |',
     '  |  Codex-powered OpenAI-compatible API                      |',
     '  +----------------------------------------------------------+',
     '',

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createServer } from '../src/server.js';
 import { parseConfig } from '../src/config.js';
 import type { Provider, Generation, GenerationEvent } from '../src/providers/types.js';
-import { CliLinkAPIError } from '../src/errors.js';
+import { AIcliToAIapiError } from '../src/errors.js';
 const key = randomBytes(32).toString('base64url');
 class Fake implements Provider {
   readonly capabilities = { streaming: true, sessions: false };
@@ -17,7 +17,7 @@ class Fake implements Provider {
   async *generate(input: Generation): AsyncGenerator<GenerationEvent> {
     this.calls++;
     if (this.mode === 'tools' && input.request?.messages.at(-1)?.role !== 'tool') { yield { type: 'tool_calls', calls: [{ id: 'call_test', type: 'function', function: { name: 'weather', arguments: '{"city":"Taipei"}' } }] }; return; }
-    if (this.mode === 'error') throw new CliLinkAPIError(429, 'upstream_rate_limit', 'Codex usage limit reached.');
+    if (this.mode === 'error') throw new AIcliToAIapiError(429, 'upstream_rate_limit', 'Codex usage limit reached.');
     if (this.mode === 'malformed') return;
     if (this.mode === 'wait') { try { await delay(10000, undefined, { signal: input.signal }); } catch { this.cancelled = true; throw new Error('cancelled'); } }
     if (this.mode !== 'buffered') yield { type: 'delta', text: 'Actual fixture result' };

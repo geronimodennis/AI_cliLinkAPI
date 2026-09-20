@@ -13,7 +13,7 @@ test('explicit Windows opt-in skips qualification probes without calling the run
   await probeIsolation(rpc, workspace, os.tmpdir(), AbortSignal.timeout(1000), true);
 });
 for (const access of ['read-only', 'read-write'] as const) test(`real native ${access}: permitted reads, writes, denied external reads/writes, symlinks and child process`, { skip: process.platform === 'win32' }, async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-native-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-native-'));
   let rpc: Rpc | undefined;
   try {
     const home = path.join(root, 'home'); const project = path.join(root, 'project'); await mkdir(home); await mkdir(project);

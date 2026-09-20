@@ -10,7 +10,7 @@ Executed during implementation:
 - Native Windows fail-closed isolation test. Linux/macOS read-only/read-write sandbox probes are explicitly skipped on Windows.
 - Official runtime login status check: **Not logged in** in the available runtime context. No browser credentials or desktop login material was extracted.
 - Initial native sandbox initialization: **CreateRestrictedToken failed: 87**. Agent execution remains disabled on Windows.
-- The subsequent probe with the clilinkapi's actual restricted-read profile failed with **Restricted read-only access requires the elevated Windows sandbox backend**. The real app-server handshake succeeded and a fresh dedicated home reported no account. Setup and rotation passed real Windows ACL verification after correcting unnecessary owner reassignment.
+- The subsequent probe with the aiclitoaiapi's actual restricted-read profile failed with **Restricted read-only access requires the elevated Windows sandbox backend**. The real app-server handshake succeeded and a fresh dedicated home reported no account. Setup and rotation passed real Windows ACL verification after correcting unnecessary owner reassignment.
 - `npm run test:live`: **BLOCKED**, because no private `CLILINKAPI_CONFIG` and ChatGPT-authenticated runtime were supplied. No successful live response, workspace modification or external-read denial is claimed.
 
 Additional reproducible commands:

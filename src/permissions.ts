@@ -20,7 +20,7 @@ export async function verifyOwner(filename: string): Promise<void> {
 export async function verifyPrivate(filename: string): Promise<void> {
   const info = await lstat(filename);
   if (info.isSymbolicLink() || (!info.isDirectory() && info.nlink > 1)) throw new Error('Secret storage must not be a symbolic or hard link.');
-  if (process.platform === 'win32') { try { await windows(verifyScript, filename); } catch { throw new Error(`Private storage check failed for "${filename}": ACL must grant access only to the runtime user and SYSTEM. Run: npm run clilinkapi -- secure-config CONFIG_PATH`); } }
+  if (process.platform === 'win32') { try { await windows(verifyScript, filename); } catch { throw new Error(`Private storage check failed for "${filename}": ACL must grant access only to the runtime user and SYSTEM. Run: npm run aiclitoaiapi -- secure-config CONFIG_PATH`); } }
   else if ((info.mode & 0o077) !== 0 || (process.getuid && info.uid !== process.getuid())) throw new Error('Secret storage must be owned by the runtime user, with mode 0600 (file) or 0700 (directory).');
 }
 // A parent may be traversable/readable without making a protected secret file
@@ -32,5 +32,5 @@ export async function verifyConfigDirectory(directory: string): Promise<void> {
   if (process.platform !== 'win32') { await verifyPrivate(directory); return; }
   const script = readAcl + `$s=[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value; $unsafe=[System.Security.AccessControl.FileSystemRights]::Write -bor [System.Security.AccessControl.FileSystemRights]::Delete -bor [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor [System.Security.AccessControl.FileSystemRights]::TakeOwnership; foreach($r in $a.Access){$id=$r.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value; if($r.AccessControlType -eq 'Allow' -and $id -ne $s -and $id -ne 'S-1-5-18' -and ($r.FileSystemRights -band $unsafe) -ne 0){exit 3}}`;
   try { await windows(script, directory); }
-  catch { throw new Error(`Configuration directory "${directory}" permits modification by another account. Run: npm run clilinkapi -- secure-config CONFIG_PATH`); }
+  catch { throw new Error(`Configuration directory "${directory}" permits modification by another account. Run: npm run aiclitoaiapi -- secure-config CONFIG_PATH`); }
 }

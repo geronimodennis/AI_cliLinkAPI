@@ -110,8 +110,8 @@ async function main() {
   const [command = 'help', configArgument = defaultConfig(), template] = process.argv.slice(2);
   const filename = resolveConfigFilename(configArgument);
   if (command === 'secure-config') { await secureConfig(filename); console.log('Configuration permissions repaired. File contents and API key were not changed.'); return; }
-  if (command === 'setup') { if (!template) throw new Error('Usage: clilinkapi setup ABSOLUTE_CONFIG_PATH TEMPLATE_JSON_PATH'); await setup(filename, template); console.log('Configuration created privately. Key was not printed.'); return; }
-  if (command === 'rotate-key') { await rotate(filename); console.log('CliLinkAPI key rotated. Restart the clilinkapi and update clients. Key was not printed.'); return; }
+  if (command === 'setup') { if (!template) throw new Error('Usage: aiclitoaiapi setup ABSOLUTE_CONFIG_PATH TEMPLATE_JSON_PATH'); await setup(filename, template); console.log('Configuration created privately. Key was not printed.'); return; }
+  if (command === 'rotate-key') { await rotate(filename); console.log('AIcliToAIapi key rotated. Restart the aiclitoaiapi and update clients. Key was not printed.'); return; }
   if (!['serve', 'login', 'doctor'].includes(command)) { console.log('Commands: setup CONFIG TEMPLATE | secure-config CONFIG | rotate-key CONFIG | login CONFIG [--device-auth] | doctor CONFIG | serve CONFIG\nDefault CONFIG: user home/.clilinkapi/clilinkapi.json'); return; }
   await verifyConfigDirectory(path.dirname(filename)); await verifyPrivate(filename);
   const config = await loadConfig(filename); await verifyPrivate(config.provider.codexHome);
@@ -146,5 +146,5 @@ async function main() {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(await realpath(process.argv[1])).href) main().catch(error => {
   // Only configuration errors are displayed locally. Never stringify runtime objects.
-  console.error(error instanceof Error ? error.message : 'CliLinkAPI startup failed.'); process.exitCode = 1;
+  console.error(error instanceof Error ? error.message : 'AIcliToAIapi startup failed.'); process.exitCode = 1;
 });

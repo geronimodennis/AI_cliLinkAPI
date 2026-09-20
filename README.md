@@ -1,25 +1,27 @@
-# CliLinkAPI
+# AIcliToAIapi
 
-[npm package](https://www.npmjs.com/package/clilinkapi) · [GitHub repository](https://github.com/geronimodennis/AI_cliLinkAPI) · [Report an issue](https://github.com/geronimodennis/AI_cliLinkAPI/issues)
+Renamed from CliLinkAPI. Install with `npm install -g aiclitoaiapi` and run `aiclitoaiapi`. Existing configuration remains at `~/.clilinkapi/clilinkapi.json`; the `CLILINKAPI_CONFIG` environment variable and `clilinkapi.example.json` template name remain compatible.
 
-Native Node.js/strict TypeScript gateway for a **ChatGPT-authenticated Codex** runtime. The clilinkapi key protects this HTTP service; it is not an OpenAI API key. No containers, VMs, direct OpenAI API client, browser-cookie extraction, or unofficial ChatGPT endpoints are used.
+[npm package](https://www.npmjs.com/package/aiclitoaiapi) · [GitHub repository](https://github.com/geronimodennis/AIcliToAIapi) · [Report an issue](https://github.com/geronimodennis/AIcliToAIapi/issues)
+
+Native Node.js/strict TypeScript gateway for a **ChatGPT-authenticated Codex** runtime. The aiclitoaiapi key protects this HTTP service; it is not an OpenAI API key. No containers, VMs, direct OpenAI API client, browser-cookie extraction, or unofficial ChatGPT endpoints are used.
 
 **Current delivery status:** HTTP routing, Codex app-server adapter, discovery, permissions profiles, setup, cancellation, and tests are implemented. By default, native Windows agent execution is attempted without isolation qualification probes; setting `provider.allowUnqualifiedWindowsExecution=false` restores the platform block. The available Windows host failed sandbox initialization. Linux/macOS execution requires the real native isolation probes to pass on that host; those platforms have not been executed during this build. A successful live Codex completion is still unverified because runtime ChatGPT login and private configuration were unavailable. See [verification](docs/verification.md) and [security](docs/security.md). This is not a claim of a production-qualified cross-platform release.
 
 ## Install natively
 
-Install [clilinkapi from npm](https://www.npmjs.com/package/clilinkapi) with Node.js 22 or newer:
+Install [aiclitoaiapi from npm](https://www.npmjs.com/package/aiclitoaiapi) with Node.js 22 or newer:
 
 ```sh
-npm install -g clilinkapi
-clilinkapi
+npm install -g aiclitoaiapi
+aiclitoaiapi
 ```
 
-Use `clilinkapi serve` to start with the default configuration, or `clilinkapi serve "/absolute/path/to/clilinkapi.json"` to select a configuration file. Run `clilinkapi` without arguments for the available setup and login commands.
+Use `aiclitoaiapi serve` to start with the default configuration, or `aiclitoaiapi serve "/absolute/path/to/clilinkapi.json"` to select a configuration file. Run `aiclitoaiapi` without arguments for the available setup and login commands.
 
-The npm package includes compiled code and the pinned Codex runtime dependency; no repository checkout or build is needed. Complete the [first-time setup](https://github.com/geronimodennis/AI_cliLinkAPI/blob/HEAD/docs/configuration.md#first-time-setup) before starting the server. On Windows, use `npm.cmd` and `clilinkapi.cmd` if PowerShell blocks script shims.
+The npm package includes compiled code and the pinned Codex runtime dependency; no repository checkout or build is needed. Complete the [first-time setup](https://github.com/geronimodennis/AIcliToAIapi/blob/HEAD/docs/configuration.md#first-time-setup) before starting the server. On Windows, use `npm.cmd` and `aiclitoaiapi.cmd` if PowerShell blocks script shims.
 
-To update an npm installation, stop the running server, run `npm install -g clilinkapi@latest`, and restart. Updating the package does not replace your private configuration.
+To update an npm installation, stop the running server, run `npm install -g aiclitoaiapi@latest`, and restart. Updating the package does not replace your private configuration.
 
 To build from source:
 
@@ -40,55 +42,55 @@ The runtime is pinned to Codex CLI/SDK **0.155.0**. Package installation include
 
 ## Configure and sign in
 
-For source installations only, run `npm link` once after building. Then use `clilinkapi serve`, `clilinkapi doctor`, or `clilinkapi serve "C:/path/to/clilinkapi.json"` from any directory. Running `clilinkapi` alone shows help. This links the command to this checkout and still requires Node.js; rebuild after source changes. On Windows, use `clilinkapi.cmd` if PowerShell blocks the generated script. See the [configuration guide](docs/configuration.md#1-install-dependencies) for setup details.
+For source installations only, run `npm link` once after building. Then use `aiclitoaiapi serve`, `aiclitoaiapi doctor`, or `aiclitoaiapi serve "C:/path/to/clilinkapi.json"` from any directory. Running `aiclitoaiapi` alone shows help. This links the command to this checkout and still requires Node.js; rebuild after source changes. On Windows, use `aiclitoaiapi.cmd` if PowerShell blocks the generated script. See the [configuration guide](docs/configuration.md#1-install-dependencies) for setup details.
 
 See the [complete configuration guide](docs/configuration.md) for a full JSON template, every field and default, Windows execution settings, LAN access, n8n setup, verification commands, and troubleshooting.
 
-Copy `clilinkapi.example.json` from the installed package (under `npm root -g` → `clilinkapi`) or source checkout to a temporary template and edit its absolute paths. Only placeholders belong in version control. Use `/home/your-user/.clilinkapi/codex` on Linux or `/Users/your-user/.clilinkapi/codex` on macOS for `provider.codexHome`; the example uses Windows paths. Both workspace directories must already exist. Remove unused workspace entries.
+Copy `clilinkapi.example.json` from the installed package (under `npm root -g` → `aiclitoaiapi`) or source checkout to a temporary template and edit its absolute paths. Only placeholders belong in version control. Use `/home/your-user/.clilinkapi/codex` on Linux or `/Users/your-user/.clilinkapi/codex` on macOS for `provider.codexHome`; the example uses Windows paths. Both workspace directories must already exist. Remove unused workspace entries.
 
 Keep private configuration and Codex home outside **every** workspace, preferably in a dedicated service account's private directory. Workspaces cannot overlap or be filesystem roots. The service rejects custom Codex configuration, hooks, plugins, rules and skills in its dedicated Codex home. Project `.codex`/`.agents` folders may remain in place: the runtime treats the workspace as untrusted and skips project configuration; project skills in `.agents/skills` are allowed by default. Set `provider.allowProjectSkills` to `false` and restart the server to disable workspace skills. Bundled runtime skills remain disabled. Symbolic links and Windows junctions are allowed by default when their resolved targets stay inside the same workspace. Set `provider.allowSymbolicLinks` to `false` and restart to reject all symbolic links and junctions. Broken links, directory cycles, links outside the workspace, and hard-linked files remain blocked. Parent directories may contain Codex configuration or instructions; their presence does not block workspace validation. Use trusted projects and a dedicated runtime account. Do not put credentials in project files.
 
-The CLI expands `~`, literal `$HOME`, `${HOME}`, `%USERPROFILE%`, and `$env:USERPROFILE` at the start of its configuration filename. This also works when your shell does not expand them. For example, Command Prompt users can use `clilinkapi setup "~/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json`. Paths inside the JSON template still need actual absolute paths; replace `YOUR_USER` and the example workspace paths before setup.
+The CLI expands `~`, literal `$HOME`, `${HOME}`, `%USERPROFILE%`, and `$env:USERPROFILE` at the start of its configuration filename. This also works when your shell does not expand them. For example, Command Prompt users can use `aiclitoaiapi setup "~/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json`. Paths inside the JSON template still need actual absolute paths; replace `YOUR_USER` and the example workspace paths before setup.
 
 PowerShell:
 
 ```powershell
-clilinkapi setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
-clilinkapi login "$HOME/.clilinkapi/clilinkapi.json"
-clilinkapi doctor "$HOME/.clilinkapi/clilinkapi.json"
-clilinkapi serve "$HOME/.clilinkapi/clilinkapi.json"
+aiclitoaiapi setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
+aiclitoaiapi login "$HOME/.clilinkapi/clilinkapi.json"
+aiclitoaiapi doctor "$HOME/.clilinkapi/clilinkapi.json"
+aiclitoaiapi serve "$HOME/.clilinkapi/clilinkapi.json"
 ```
 
 Linux/macOS:
 
 ```sh
-clilinkapi setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
-clilinkapi login "$HOME/.clilinkapi/clilinkapi.json"
-clilinkapi doctor "$HOME/.clilinkapi/clilinkapi.json"
-clilinkapi serve "$HOME/.clilinkapi/clilinkapi.json"
+aiclitoaiapi setup "$HOME/.clilinkapi/clilinkapi.json" ./clilinkapi.example.json
+aiclitoaiapi login "$HOME/.clilinkapi/clilinkapi.json"
+aiclitoaiapi doctor "$HOME/.clilinkapi/clilinkapi.json"
+aiclitoaiapi serve "$HOME/.clilinkapi/clilinkapi.json"
 ```
 
 `setup` uses 32 cryptographically random bytes, stores the generated key without printing it, and refuses to overwrite an existing configuration. On Unix it requires private directory/file modes (`0700`/`0600`); on Windows it applies an ACL for the runtime user and SYSTEM. Run under the same account that will run the server. Administrators remain trusted. A private parent directory is required even for key rotation.
 
-If an existing configuration fails the ACL check, run `clilinkapi secure-config "~/.clilinkapi/clilinkapi.json"` as the runtime user. This secures the dedicated directory, configuration file and configured `codex` child folder without changing file contents or rotating the key. It creates that Codex folder if missing. It requires current-user ownership and refuses unrelated entries, links, your home directory and filesystem roots. A Codex home outside that dedicated child location must be secured separately. On Windows, startup permits read/traverse-only access to the configuration's parent folder, but rejects other users' modification rights; the configuration file and Codex storage still require private ACLs. Setup also secures an existing empty directory automatically. If a configuration already exists, continue with `login` or `doctor` instead of rerunning setup.
+If an existing configuration fails the ACL check, run `aiclitoaiapi secure-config "~/.clilinkapi/clilinkapi.json"` as the runtime user. This secures the dedicated directory, configuration file and configured `codex` child folder without changing file contents or rotating the key. It creates that Codex folder if missing. It requires current-user ownership and refuses unrelated entries, links, your home directory and filesystem roots. A Codex home outside that dedicated child location must be secured separately. On Windows, startup permits read/traverse-only access to the configuration's parent folder, but rejects other users' modification rights; the configuration file and Codex storage still require private ACLs. Setup also secures an existing empty directory automatically. If a configuration already exists, continue with `login` or `doctor` instead of rerunning setup.
 
-`login` invokes the official Codex login process with ChatGPT authentication forced. The official process may print a login URL or device code for the human sign-in flow; the clilinkapi never prints stored credentials. If browser login is unavailable, use `login CONFIG --device-auth` where supported by your workspace. Supported Codex credential storage remains in `provider.codexHome` or its supported OS credential store. No credential file is parsed or copied by the clilinkapi. A compatible existing **dedicated** Codex home may be configured; a browser or desktop login is not assumed to be shared.
+`login` invokes the official Codex login process with ChatGPT authentication forced. The official process may print a login URL or device code for the human sign-in flow; the aiclitoaiapi never prints stored credentials. If browser login is unavailable, use `login CONFIG --device-auth` where supported by your workspace. Supported Codex credential storage remains in `provider.codexHome` or its supported OS credential store. No credential file is parsed or copied by the aiclitoaiapi. A compatible existing **dedicated** Codex home may be configured; a browser or desktop login is not assumed to be shared.
 
-If login fails, check your ChatGPT subscription, workspace Codex permissions, SSO/device-code policy, system clock, and outbound access. Re-run official login as the runtime user for expired sessions. An API-key-authenticated account is rejected. Usage limits are returned as upstream errors, never bypassed. CliLinkAPI startup does not require upstream availability; protected `/v1/models` reports login problems without attempting generation.
+If login fails, check your ChatGPT subscription, workspace Codex permissions, SSO/device-code policy, system clock, and outbound access. Re-run official login as the runtime user for expired sessions. An API-key-authenticated account is rejected. Usage limits are returned as upstream errors, never bypassed. AIcliToAIapi startup does not require upstream availability; protected `/v1/models` reports login problems without attempting generation.
 
 Update configuration while stopped, preserve private permissions, and restart; there is no hot reload. Rotation:
 
 ```sh
-clilinkapi rotate-key /absolute/private/clilinkapi.json
+aiclitoaiapi rotate-key /absolute/private/clilinkapi.json
 ```
 
-Restart and update clients through your own secure secret-distribution method. Running processes retain the previous key until restarted. Do not print the key into a terminal or commit it. Never run multiple clilinkapi instances against overlapping project trees; see the concurrency limitation in the security document.
+Restart and update clients through your own secure secret-distribution method. Running processes retain the previous key until restarted. Do not print the key into a terminal or commit it. Never run multiple aiclitoaiapi instances against overlapping project trees; see the concurrency limitation in the security document.
 
 ## API
 
-All endpoints require `Authorization: Bearer <clilinkapi-key>`. One shared key gives its holder access to **all** configured workspaces. There is no per-workspace identity or privilege separation between key holders.
+All endpoints require `Authorization: Bearer <aiclitoaiapi-key>`. One shared key gives its holder access to **all** configured workspaces. There is no per-workspace identity or privilege separation between key holders.
 
-`GET /v1/models` queries the logged-in runtime's `model/list`; it returns visible models, optionally intersected with `provider.allowedModels`. An empty allowlist means all discovered visible models. `reasoning_efforts` is a clilinkapi extension. No static/fabricated model catalog is shipped. A runtime catalog is not a guarantee of remaining quota or a successful future request.
+`GET /v1/models` queries the logged-in runtime's `model/list`; it returns visible models, optionally intersected with `provider.allowedModels`. An empty allowlist means all discovered visible models. `reasoning_efforts` is a aiclitoaiapi extension. No static/fabricated model catalog is shipped. A runtime catalog is not a guarantee of remaining quota or a successful future request.
 
 `POST /v1/chat/completions` supports only:
 
@@ -107,7 +109,7 @@ Text messages, function tools and results, `tool_choice: auto/none`, `n: 1`, tex
 
 ## Requests without exposing the key
 
-The following Node example loads the private config locally. Run it as the client identity authorized to read that config; distribute only the clilinkapi key to other clients using your secure method. Set `CLILINKAPI_CONFIG` to its absolute path.
+The following Node example loads the private config locally. Run it as the client identity authorized to read that config; distribute only the aiclitoaiapi key to other clients using your secure method. Set `CLILINKAPI_CONFIG` to its absolute path.
 
 ```js
 import { readFile } from 'node:fs/promises';
@@ -134,15 +136,15 @@ const streaming = await fetch('http://127.0.0.1:3000/v1/chat/completions', {
 for await (const chunk of streaming.body) process.stdout.write(chunk);
 ```
 
-Use a reasoning effort listed for the selected model if `low` is unavailable. [OpenAI SDK client example](examples/client.mjs) uses `baseURL`, the locally generated clilinkapi key, workspace selection and `maxRetries: 0`.
+Use a reasoning effort listed for the selected model if `low` is unavailable. [OpenAI SDK client example](examples/client.mjs) uses `baseURL`, the locally generated aiclitoaiapi key, workspace selection and `maxRetries: 0`.
 
 Non-streaming responses contain the actual labelled Codex final answer, with host-path/known-secret redaction, at `choices[0].message.content`. Usage is included only when reported by Codex. Tool activity and commentary are excluded. SSE emits final-answer deltas, then a stop chunk and `[DONE]`; errors after headers are SSE error objects followed by connection close, without a successful terminator. If Codex provides only a buffered answer, streaming returns `stream_unavailable`; it is not turned into fake tokens. Redaction holds a small suffix and unfinished word, so very short responses may appear together. Ordinary chat completions generally do not run commands; **these requests can modify files and execute commands** within their configured permissions.
 
 ## Deployment and verification
 
-CliLinkAPI requires a dedicated Codex home without custom configuration, hooks, plugins, rules, or skills. Codex can create `skills/.system` during normal startup; CliLinkAPI permits the pinned runtime's bundled skill directories and explicitly disables those skills. Other skill directories remain rejected. A startup rejection identifies the blocked entry so it can be relocated without deleting credentials.
+AIcliToAIapi requires a dedicated Codex home without custom configuration, hooks, plugins, rules, or skills. Codex can create `skills/.system` during normal startup; AIcliToAIapi permits the pinned runtime's bundled skill directories and explicitly disables those skills. Other skill directories remain rejected. A startup rejection identifies the blocked entry so it can be relocated without deleting credentials.
 
-Bind to localhost by default. For network deployment terminate HTTPS at a maintained reverse proxy, disable response buffering for SSE, set upstream timeouts above the clilinkapi timeout, apply request-size/rate limits, and firewall direct access to the clilinkapi port. Direct TLS is not implemented. Do not transmit bearer keys over public plaintext HTTP. No permissive CORS policy is installed.
+Bind to localhost by default. For network deployment terminate HTTPS at a maintained reverse proxy, disable response buffering for SSE, set upstream timeouts above the aiclitoaiapi timeout, apply request-size/rate limits, and firewall direct access to the aiclitoaiapi port. Direct TLS is not implemented. Do not transmit bearer keys over public plaintext HTTP. No permissive CORS policy is installed.
 
 ```sh
 npm run check
@@ -153,7 +155,7 @@ npm run test:isolation
 npm run test:live
 ```
 
-`test:live` starts a local clilinkapi and requests a real response through HTTP, then checks a temporary permitted file and denied external sentinel reads/writes through further HTTP requests. It cleans up only those uniquely named test files. On Linux/macOS, each eligible generation first probes real sandbox reads, writes, link escapes and subprocess inheritance. Windows generation skips these probes by default; native sandbox initialization may still fail. CI configures Node 22/24 on Windows/Linux/macOS; it does not store ChatGPT credentials or claim to run authenticated live tests.
+`test:live` starts a local aiclitoaiapi and requests a real response through HTTP, then checks a temporary permitted file and denied external sentinel reads/writes through further HTTP requests. It cleans up only those uniquely named test files. On Linux/macOS, each eligible generation first probes real sandbox reads, writes, link escapes and subprocess inheritance. Windows generation skips these probes by default; native sandbox initialization may still fail. CI configures Node 22/24 on Windows/Linux/macOS; it does not store ChatGPT credentials or claim to run authenticated live tests.
 
 See [architecture and adapter guide](docs/architecture.md), [security boundaries](docs/security.md), and [checks executed](docs/verification.md).
 

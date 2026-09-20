@@ -25,7 +25,7 @@ test('strict configuration rejects empty/placeholder keys, extra fields, modes a
   assert.throws(() => parseConfig({ ...c, workspaces: { p: { path: '/x', access: 'full' } } }));
 });
 test('canonical workspace validation rejects roots, secrets, aliases, overlapping and nonexistent dirs', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-test-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-test-'));
   try {
     const home = path.join(root, 'home'); const ws = path.join(root, 'workspace'); const file = path.join(root, 'clilinkapi.json');
     await mkdir(home); await mkdir(ws); await writeFile(file, '{}');
@@ -43,7 +43,7 @@ test('project skills default to allowed and support an explicit restriction', ()
   assert.throws(() => parseConfig({ ...config, provider: { ...config.provider, allowProjectSkills: 'false' } }));
 });
 test('junction/symlink workspace escape is rejected', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-link-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-link-'));
   try {
     const ws = path.join(root, 'workspace'); const outside = path.join(root, 'outside'); await mkdir(ws); await mkdir(outside);
     await symlink(outside, path.join(ws, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
@@ -60,7 +60,7 @@ test('symbolic links default to allowed and can be restricted', () => {
 });
 
 test('workspace ancestors may contain Codex configuration and instructions', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-ancestors-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-ancestors-'));
   try {
     for (const name of ['.codex', '.agents']) await mkdir(path.join(root, name));
     for (const name of ['AGENTS.md', 'AGENTS.override.md']) await writeFile(path.join(root, name), 'Parent instructions');
@@ -73,7 +73,7 @@ test('workspace ancestors may contain Codex configuration and instructions', asy
 });
 
 test('internal directory links and chains are allowed; restrictions, cycles, broken links and hard links are rejected', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-internal-links-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-internal-links-'));
   try {
     const ws = path.join(root, 'workspace');
     const target = path.join(ws, 'target');
@@ -98,7 +98,7 @@ test('internal directory links and chains are allowed; restrictions, cycles, bro
 });
 
 test('file symlinks inside the workspace are allowed and file escapes are rejected', async t => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-file-links-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-file-links-'));
   try {
     const ws = path.join(root, 'workspace'); await mkdir(ws);
     await writeFile(path.join(ws, 'file'), 'internal');
@@ -122,7 +122,7 @@ test('request translation and model effort are strict and separate', () => {
 });
 test('workspace slots prevent concurrent mutation and bound concurrency', () => {
   const slots = new ExecutionSlots(1); const release = slots.acquire('a');
-  assert.throws(() => slots.acquire('a'), { code: 'workspace_busy' }); assert.throws(() => slots.acquire('b'), { code: 'clilinkapi_busy' });
+  assert.throws(() => slots.acquire('a'), { code: 'workspace_busy' }); assert.throws(() => slots.acquire('b'), { code: 'aiclitoaiapi_busy' });
   release(); slots.acquire('a')();
 });
 test('extract actual final text and usage without commentary or tools', () => {

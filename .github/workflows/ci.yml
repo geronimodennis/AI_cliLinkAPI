@@ -1,4 +1,4 @@
-name: Native clilinkapi checks
+name: Native aiclitoaiapi checks
 on: [push, pull_request]
 jobs:
   native:

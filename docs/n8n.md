@@ -2,7 +2,7 @@
 
 For initial setup, all configuration fields, network access, and troubleshooting, see the [configuration guide](configuration.md).
 
-CliLinkAPI implements the text Chat Completions and function-tool subset used by n8n's OpenAI Chat Model. It is not a complete implementation of every OpenAI API.
+AIcliToAIapi implements the text Chat Completions and function-tool subset used by n8n's OpenAI Chat Model. It is not a complete implementation of every OpenAI API.
 
 **Runtime limitation:** Windows generation is attempted without isolation qualification by default. The adapter and HTTP tests do not establish a working live n8n/Codex run. Linux/macOS generation requires successful native isolation probes and ChatGPT login. `provider.allowUnqualifiedWindowsExecution` defaults to `true`; set it to `false` and restart to block Windows generation. This skips Windows qualification probes but still requests native permission profiles; runtime sandbox failures remain possible.
 
@@ -23,7 +23,7 @@ The default allows n8n requests without a custom `X-Workspace-ID` header. An exp
 ## n8n settings
 
 1. Connect an **OpenAI Chat Model** node to your **AI Agent** node.
-2. Create an OpenAI credential using your **CliLinkAPI API key**, from `auth.apiKey`. Leave Organization ID empty. Set its Base URL to `http://127.0.0.1:3000/v1` when n8n runs directly on the same machine. Older node versions also expose Base URL under Options.
+2. Create an OpenAI credential using your **AIcliToAIapi API key**, from `auth.apiKey`. Leave Organization ID empty. Set its Base URL to `http://127.0.0.1:3000/v1` when n8n runs directly on the same machine. Older node versions also expose Base URL under Options.
 3. Set **Use Responses API** to **off**. Select a model returned by the gateway's `/v1/models`, or enter its exact ID.
 4. Set **Max Retries** to `0` and **Timeout** to `180000` (or match the gateway timeout). Leave Sampling Temperature, Top P, Maximum Number of Tokens, and penalties unset. Use Text response format. Do not enable structured output or forced tool selection.
 5. Attach a simple n8n tool, such as Calculator, to the agent. Ask it to use that tool and report the result. Inspect the workflow execution to verify the tool actually ran.

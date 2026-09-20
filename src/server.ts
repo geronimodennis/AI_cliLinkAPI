@@ -4,7 +4,7 @@ import { once } from 'node:events';
 import os from 'node:os';
 import type { Config } from './config.js';
 import { authenticate } from './auth.js';
-import { CliLinkAPIError, errorBody, normalizeError } from './errors.js';
+import { AIcliToAIapiError, errorBody, normalizeError } from './errors.js';
 import type { Provider } from './providers/types.js';
 import { parseRequest, selectModel, translate } from './requests.js';
 import { ExecutionSlots } from './sessions.js';
@@ -35,24 +35,24 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
         const models = await provider.models(signal);
         json(response, 200, { object: 'list', data: models.map(m => ({ id: m.id, object: 'model', owned_by: 'codex', reasoning_efforts: m.efforts })) }); return;
       }
-      if (request.url !== '/v1/chat/completions' || request.method !== 'POST') throw new CliLinkAPIError(404, 'not_found', 'Endpoint not found.');
-      if (request.headers['x-session-id'] || request.headers['x-thread-id']) throw new CliLinkAPIError(400, 'session_resume_unsupported', 'Each request starts an isolated session. Send conversation history in messages.');
+      if (request.url !== '/v1/chat/completions' || request.method !== 'POST') throw new AIcliToAIapiError(404, 'not_found', 'Endpoint not found.');
+      if (request.headers['x-session-id'] || request.headers['x-thread-id']) throw new AIcliToAIapiError(400, 'session_resume_unsupported', 'Each request starts an isolated session. Send conversation history in messages.');
       const workspaceId = request.headers['x-workspace-id'] ?? config.compatibility.defaultWorkspace;
-      if (typeof workspaceId !== 'string' || !Object.hasOwn(config.workspaces, workspaceId)) throw new CliLinkAPIError(400, 'invalid_workspace', 'A configured X-Workspace-ID header is required.');
+      if (typeof workspaceId !== 'string' || !Object.hasOwn(config.workspaces, workspaceId)) throw new AIcliToAIapiError(400, 'invalid_workspace', 'A configured X-Workspace-ID header is required.');
       const workspace = config.workspaces[workspaceId]!;
-      if (!request.headers['content-type']?.startsWith('application/json')) throw new CliLinkAPIError(415, 'content_type', 'Use application/json.');
+      if (!request.headers['content-type']?.startsWith('application/json')) throw new AIcliToAIapiError(415, 'content_type', 'Use application/json.');
       release = slots.acquire(workspace.path);
       const chunks: Buffer[] = [];
       let bytes = 0;
       const abortRead = () => { request.destroy(); };
       signal.addEventListener('abort', abortRead, { once: true });
       try {
-        for await (const chunk of request) { const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk); bytes += buffer.length; if (bytes > config.server.maxBodyBytes) throw new CliLinkAPIError(413, 'request_too_large', 'Request body exceeds configured limit.'); chunks.push(buffer); }
+        for await (const chunk of request) { const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk); bytes += buffer.length; if (bytes > config.server.maxBodyBytes) throw new AIcliToAIapiError(413, 'request_too_large', 'Request body exceeds configured limit.'); chunks.push(buffer); }
       } finally { signal.removeEventListener('abort', abortRead); }
-      let value: unknown; try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new CliLinkAPIError(400, 'invalid_json', 'Request body must be valid JSON.'); }
+      let value: unknown; try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new AIcliToAIapiError(400, 'invalid_json', 'Request body must be valid JSON.'); }
       const parsed = parseRequest(value);
       const selected = selectModel(parsed, await provider.models(signal), config.provider);
-      if (parsed.stream && !provider.capabilities.streaming) throw new CliLinkAPIError(400, 'stream_unsupported', 'Provider does not support streaming.');
+      if (parsed.stream && !provider.capabilities.streaming) throw new AIcliToAIapiError(400, 'stream_unsupported', 'Provider does not support streaming.');
       const created = Math.floor(Date.now() / 1000);
       const base = { id, created, model: selected.model };
       const chunk = (delta: Record<string, unknown>, finish: string | null = null) => ({ ...base, object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: finish }] });
@@ -73,7 +73,7 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
         } else {
           complete = true;
           if (parsed.stream) {
-            if (!receivedDelta && event.text) throw new CliLinkAPIError(502, 'stream_unavailable', 'Codex supplied only buffered final output; real-time streaming was unavailable. Retry with stream=false.');
+            if (!receivedDelta && event.text) throw new AIcliToAIapiError(502, 'stream_unavailable', 'Codex supplied only buffered final output; real-time streaming was unavailable. Retry with stream=false.');
             const text = redactor.push('', true); if (text) await sse(response, chunk({ content: text }), signal);
             await sse(response, chunk({}, 'stop'), signal);
             if (parsed.stream_options?.include_usage && event.usage) await sse(response, { ...base, object: 'chat.completion.chunk', choices: [], usage: event.usage }, signal);
@@ -81,9 +81,9 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
           } else json(response, 200, { ...base, object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: redactor.clean(event.text) }, finish_reason: 'stop' }], ...(event.usage ? { usage: event.usage } : {}) });
         }
       }
-      if (!complete) throw new CliLinkAPIError(502, 'missing_final_response', 'Codex ended without a final response.');
+      if (!complete) throw new AIcliToAIapiError(502, 'missing_final_response', 'Codex ended without a final response.');
     } catch (error) {
-      const safe = timedOut ? new CliLinkAPIError(504, 'timeout', 'Request timed out; execution was cancelled. Changes may already have occurred.') : normalizeError(error);
+      const safe = timedOut ? new AIcliToAIapiError(504, 'timeout', 'Request timed out; execution was cancelled. Changes may already have occurred.') : normalizeError(error);
       if (!response.destroyed && !response.writableEnded) {
         if (streaming) { await sse(response, errorBody(safe), AbortSignal.timeout(1000)).catch(() => undefined); response.end(); }
         else { if (safe.status === 401) response.setHeader('www-authenticate', 'Bearer'); json(response, safe.status, errorBody(safe)); }

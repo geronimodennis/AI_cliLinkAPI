@@ -3,7 +3,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readdir, lstat } from 'node:fs/promises';
-import { CliLinkAPIError } from '../errors.js';
+import { AIcliToAIapiError } from '../errors.js';
 const require = createRequire(import.meta.url);
 export const RUNTIME_VERSION = '0.155.0';
 // Bundled by the pinned runtime itself, including during login/app-server startup.
@@ -14,7 +14,7 @@ export function disabledSkillArgs(home: string, projectSkills: string[] = [], al
   return ['-c', `skills.config=[${paths.map(filename => `{path=${JSON.stringify(filename)},enabled=false}`).join(',')}]`];
 }
 export async function verifyRuntimeHome(home: string): Promise<void> {
-  const reject = (entry: string): never => { throw new CliLinkAPIError(503, 'runtime_configuration', `Use a dedicated Codex home with no custom config, hooks, plugins, rules or skills. Remove or relocate the blocked entry: ${entry}.`); };
+  const reject = (entry: string): never => { throw new AIcliToAIapiError(503, 'runtime_configuration', `Use a dedicated Codex home with no custom config, hooks, plugins, rules or skills. Remove or relocate the blocked entry: ${entry}.`); };
   for (const name of ['config.toml', 'AGENTS.md', 'AGENTS.override.md', 'rules', 'plugins', 'hooks.json']) {
     try { await lstat(path.join(home, name)); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue; throw error; }
     reject(name);
@@ -47,7 +47,7 @@ export function runtimeEnv(home: string): NodeJS.ProcessEnv {
 }
 export async function verifyRuntime(home: string): Promise<void> {
   const { stdout } = await promisify(execFile)(codexBinary(), ['--version'], { env: runtimeEnv(home), timeout: 10000, windowsHide: true });
-  if (stdout.trim() !== `codex-cli ${RUNTIME_VERSION}`) throw new CliLinkAPIError(503, 'runtime_version', 'Codex runtime version is not the audited pinned version.');
+  if (stdout.trim() !== `codex-cli ${RUNTIME_VERSION}`) throw new AIcliToAIapiError(503, 'runtime_version', 'Codex runtime version is not the audited pinned version.');
   await verifyRuntimeHome(home);
 }
 export const hardeningArgs = [

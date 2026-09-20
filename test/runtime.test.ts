@@ -9,7 +9,7 @@ import { inspectWorkspace } from '../src/config.js';
 import { profileArgs } from '../src/sandbox.js';
 
 for (const allowProjectSkills of [true, false]) test(`project skills allowed=${allowProjectSkills}, while config is ignored and links remain rejected`, async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-project-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-project-'));
   let rpc: Rpc | undefined;
   try {
     const home = path.join(root, 'home');
@@ -41,7 +41,7 @@ for (const allowProjectSkills of [true, false]) test(`project skills allowed=${a
 });
 
 test('a fresh runtime remains usable after it installs bundled skills, with every skill disabled', async () => {
-  const home = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-runtime-'));
+  const home = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-runtime-'));
   let rpc: Rpc | undefined;
   try {
     await verifyRuntime(home);
@@ -59,7 +59,7 @@ test('a fresh runtime remains usable after it installs bundled skills, with ever
 });
 
 test('custom configuration, custom skills, and links remain blocked', async () => {
-  const home = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-home-'));
+  const home = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-home-'));
   try {
     for (const name of ['config.toml', 'AGENTS.md', 'AGENTS.override.md', 'rules', 'plugins', 'hooks.json']) {
       await writeFile(path.join(home, name), '');

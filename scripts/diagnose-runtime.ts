@@ -7,7 +7,7 @@ import { codexBinary, runtimeEnv, verifyRuntime, hardeningArgs } from '../src/pr
 import { profileArgs } from '../src/sandbox.js';
 import { Rpc } from '../src/providers/rpc.js';
 import { Redactor } from '../src/redaction.js';
-const root = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-diagnostic-'));
+const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-diagnostic-'));
 let rpc: Rpc | undefined;
 try {
   const home = path.join(root, 'home'); const project = path.join(root, 'project'); await mkdir(home); await mkdir(project);
@@ -26,7 +26,7 @@ try {
   console.log(JSON.stringify({ pinned_runtime: true, app_server_handshake: true, isolated_home_account_type: account.account?.type ?? null }));
   if (process.platform === 'win32') {
     try {
-      await promisify(execFile)(codexBinary(), [...profileArgs({ path: project, access: 'read-only' }, [home]), 'sandbox', '-P', 'clilinkapi', '-C', project, process.execPath, '-e', 'process.stdout.write("SANDBOX_STARTED")'], { env: runtimeEnv(home), timeout: 15000, windowsHide: true });
+      await promisify(execFile)(codexBinary(), [...profileArgs({ path: project, access: 'read-only' }, [home]), 'sandbox', '-P', 'aiclitoaiapi', '-C', project, process.execPath, '-e', 'process.stdout.write("SANDBOX_STARTED")'], { env: runtimeEnv(home), timeout: 15000, windowsHide: true });
       console.log('Windows command started; this does not qualify read isolation. Generation remains disabled.');
     } catch (error) {
       const text = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr) : '';

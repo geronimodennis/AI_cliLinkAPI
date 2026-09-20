@@ -53,7 +53,7 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          p.name = `@${process.env.PACKAGE_OWNER.toLowerCase()}/clilinkapi`;
+          p.name = `@${process.env.PACKAGE_OWNER.toLowerCase()}/aiclitoaiapi`;
           p.repository = { type: 'git', url: `git+https://github.com/${process.env.PACKAGE_REPOSITORY}.git` };
           p.publishConfig = { registry: 'https://npm.pkg.github.com' };
           fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');

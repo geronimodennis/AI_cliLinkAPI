@@ -16,7 +16,7 @@ test('configuration paths expand home shorthand when the shell leaves it literal
   assert.throws(() => resolveConfigFilename('$HOME_OTHER/clilinkapi.json'), /must be absolute/);
 });
 test('setup creates a private key, never overwrites, rotation changes it', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-setup-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-setup-'));
   try {
     const workspace = path.join(root, 'project'); await mkdir(workspace);
     const template = path.join(root, 'template.json'); const filename = path.join(root, 'private', 'clilinkapi.json');
@@ -37,7 +37,7 @@ test('setup creates a private key, never overwrites, rotation changes it', async
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 test('permissions repair preserves existing configuration and rejects shared directories', async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-acl-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-acl-'));
   try {
     const filename = path.join(root, 'clilinkapi.json');
     const contents = '{"auth":{"apiKey":"existing-key-must-not-change"}}\n';
@@ -55,7 +55,7 @@ test('permissions repair preserves existing configuration and rejects shared dir
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 test('Windows permits read-only parent access but rejects writable parents and readable secret files', { skip: process.platform !== 'win32' }, async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'clilinkapi-parent-acl-'));
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-parent-acl-'));
   try {
     const filename = path.join(root, 'clilinkapi.json'); await writeFile(filename, '{}'); await secureConfig(filename);
     const addRule = async (target: string, rights: string) => {

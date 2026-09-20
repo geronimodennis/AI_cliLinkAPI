@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Config } from '../config.js';
 import { inspectWorkspace } from '../config.js';
-import { CliLinkAPIError, normalizeError } from '../errors.js';
+import { AIcliToAIapiError, normalizeError } from '../errors.js';
 import { profileArgs, probeIsolation, requireNativePlatform } from '../sandbox.js';
 import type { Generation, GenerationEvent, Model, Provider, Usage } from './types.js';
 import { Rpc, type Notification } from './rpc.js';
@@ -26,12 +26,12 @@ export class ResponseExtractor {
       const item = agentItem.safeParse(p.item);
       if (!item.success) return;
       if (item.data.phase === 'final_answer') {
-        if (this.finalIds.size && !this.finalIds.has(item.data.id)) throw new CliLinkAPIError(502, 'ambiguous_final_response', 'Codex emitted more than one final-answer item.');
+        if (this.finalIds.size && !this.finalIds.has(item.data.id)) throw new AIcliToAIapiError(502, 'ambiguous_final_response', 'Codex emitted more than one final-answer item.');
         this.finalIds.add(item.data.id);
         if (event.method === 'item/completed') {
           if ((this.streamed.get(item.data.id) ?? '') !== item.data.text) {
             // No fake token stream: final text is used only by non-streaming clients.
-            if (this.streamed.has(item.data.id)) throw new CliLinkAPIError(502, 'upstream_protocol', 'Codex final text disagrees with streamed deltas.');
+            if (this.streamed.has(item.data.id)) throw new AIcliToAIapiError(502, 'upstream_protocol', 'Codex final text disagrees with streamed deltas.');
           }
           this.finalText = item.data.text;
         }
@@ -42,7 +42,7 @@ export class ResponseExtractor {
       const delta = z.object({ itemId: z.string(), delta: z.string() }).parse(p);
       if (!this.finalIds.has(delta.itemId)) return;
       const text = (this.streamed.get(delta.itemId) ?? '') + delta.delta;
-      if (Buffer.byteLength(text) > 2 * 1024 * 1024) throw new CliLinkAPIError(502, 'response_too_large', 'Codex response exceeded clilinkapi limits.');
+      if (Buffer.byteLength(text) > 2 * 1024 * 1024) throw new AIcliToAIapiError(502, 'response_too_large', 'Codex response exceeded aiclitoaiapi limits.');
       this.streamed.set(delta.itemId, text);
       return { type: 'delta', text: delta.delta };
     }
@@ -53,7 +53,7 @@ export class ResponseExtractor {
     if (event.method === 'turn/completed') {
       const turn = z.object({ turn: z.object({ status: z.string(), error: z.unknown().optional() }) }).parse(p).turn;
       if (turn.status !== 'completed') throw normalizeError(new Error(JSON.stringify(turn.error ?? turn.status)));
-      if (this.finalText === undefined) throw new CliLinkAPIError(502, 'missing_final_response', 'Codex completed without a labelled final assistant response.');
+      if (this.finalText === undefined) throw new AIcliToAIapiError(502, 'missing_final_response', 'Codex completed without a labelled final assistant response.');
       return { type: 'complete', text: this.finalText, ...(this.usage ? { usage: this.usage } : {}) };
     }
     return;
@@ -72,7 +72,7 @@ export class CodexProvider implements Provider {
     try {
       await rpc.initialize(signal);
       const account = z.object({ account: z.object({ type: z.string() }).nullable() }).parse(await rpc.request('account/read', { refreshToken: true }, signal));
-      if (account.account?.type !== 'chatgpt') throw new CliLinkAPIError(503, 'upstream_authentication', 'Runtime requires ChatGPT sign-in. Run clilinkapi login as the clilinkapi runtime user.');
+      if (account.account?.type !== 'chatgpt') throw new AIcliToAIapiError(503, 'upstream_authentication', 'Runtime requires ChatGPT sign-in. Run aiclitoaiapi login as the aiclitoaiapi runtime user.');
       return rpc;
     } catch (error) { await this.dispose(rpc); throw normalizeError(error); }
   }
@@ -94,7 +94,7 @@ export class CodexProvider implements Provider {
   async *generate(input: Generation): AsyncGenerator<GenerationEvent> {
     requireNativePlatform(this.config.provider.allowUnqualifiedWindowsExecution);
     const resumed = this.tools.take(input);
-    if (!resumed && this.tools.hasWorkspace(input.workspace.path)) throw new CliLinkAPIError(409, 'workspace_busy', 'Workspace is waiting for an external tool result.');
+    if (!resumed && this.tools.hasWorkspace(input.workspace.path)) throw new AIcliToAIapiError(409, 'workspace_busy', 'Workspace is waiting for an external tool result.');
     if (resumed) {
       let retained = false;
       try {
@@ -109,14 +109,14 @@ export class CodexProvider implements Provider {
     try {
       await probeIsolation(rpc, input.workspace, this.config.provider.codexHome, input.signal, this.config.provider.allowUnqualifiedWindowsExecution);
       const dynamicTools = input.request?.tool_choice === 'none' ? [] : (input.request?.tools ?? []).map(t => ({ type: 'function', name: t.function.name, description: t.function.description ?? '', inputSchema: t.function.parameters }));
-      const response = z.object({ thread: z.object({ id: z.string() }), model: z.string(), approvalPolicy: z.string(), activePermissionProfile: z.object({ id: z.string() }) }).parse(await rpc.request('thread/start', { model: input.model, modelProvider: 'openai', allowProviderModelFallback: false, cwd: input.workspace.path, runtimeWorkspaceRoots: [input.workspace.path], permissions: 'clilinkapi', approvalPolicy: 'never', approvalsReviewer: 'user', ephemeral: true, environments: [], selectedCapabilityRoots: [], dynamicTools, developerInstructions: input.instructions || null }, input.signal));
-      if (response.model !== input.model || response.approvalPolicy !== 'never' || response.activePermissionProfile.id !== 'clilinkapi') throw new CliLinkAPIError(503, 'runtime_policy_mismatch', 'Codex did not honor the requested model or permission policy.');
+      const response = z.object({ thread: z.object({ id: z.string() }), model: z.string(), approvalPolicy: z.string(), activePermissionProfile: z.object({ id: z.string() }) }).parse(await rpc.request('thread/start', { model: input.model, modelProvider: 'openai', allowProviderModelFallback: false, cwd: input.workspace.path, runtimeWorkspaceRoots: [input.workspace.path], permissions: 'aiclitoaiapi', approvalPolicy: 'never', approvalsReviewer: 'user', ephemeral: true, environments: [], selectedCapabilityRoots: [], dynamicTools, developerInstructions: input.instructions || null }, input.signal));
+      if (response.model !== input.model || response.approvalPolicy !== 'never' || response.activePermissionProfile.id !== 'aiclitoaiapi') throw new AIcliToAIapiError(503, 'runtime_policy_mismatch', 'Codex did not honor the requested model or permission policy.');
       threadId = response.thread.id;
       const turn = z.object({ turn: z.object({ id: z.string() }) }).parse(await rpc.request('turn/start', { threadId, input: [{ type: 'text', text: input.prompt, text_elements: [] }], model: input.model, effort: input.effort, approvalPolicy: 'never', approvalsReviewer: 'user' }, input.signal));
       turnId = turn.turn.id;
       const extractor = new ResponseExtractor(threadId);
       for await (const event of this.continueTurn(input, { rpc, threadId, turnId, extractor, requestId: 0 })) { retained = event.type === 'tool_calls'; yield event; }
-    } catch (error) { if (input.signal.aborted) throw new CliLinkAPIError(499, 'cancelled', 'Request cancelled.'); throw normalizeError(error); }
+    } catch (error) { if (input.signal.aborted) throw new AIcliToAIapiError(499, 'cancelled', 'Request cancelled.'); throw normalizeError(error); }
     finally {
       if (!retained) {
         if (threadId && turnId) await rpc.request('turn/interrupt', { threadId, turnId }, AbortSignal.timeout(1500)).catch(() => undefined);
@@ -129,9 +129,9 @@ export class CodexProvider implements Provider {
       const notification = await state.rpc.next(input.signal);
       if (notification.method === 'item/tool/call') {
         const call = z.object({ threadId: z.string(), turnId: z.string(), tool: z.string(), namespace: z.string().nullable().optional(), arguments: z.record(z.string(), z.unknown()) }).parse(notification.params);
-        if (notification.requestId === undefined || call.threadId !== state.threadId || call.turnId !== state.turnId || call.namespace || input.request?.tool_choice === 'none' || !input.request?.tools?.some(t => t.function.name === call.tool)) throw new CliLinkAPIError(502, 'unexpected_tool', 'Runtime requested an unregistered external tool.');
+        if (notification.requestId === undefined || call.threadId !== state.threadId || call.turnId !== state.turnId || call.namespace || input.request?.tool_choice === 'none' || !input.request?.tools?.some(t => t.function.name === call.tool)) throw new AIcliToAIapiError(502, 'unexpected_tool', 'Runtime requested an unregistered external tool.');
         const args = JSON.stringify(call.arguments);
-        if (Buffer.byteLength(args) > 200000 || [this.config.auth.apiKey, this.config.provider.codexHome, this.filename].some(secret => args.includes(secret) || args.includes(JSON.stringify(secret).slice(1, -1)))) throw new CliLinkAPIError(502, 'unsafe_tool_arguments', 'External tool arguments exceeded output limits or contained private runtime data.');
+        if (Buffer.byteLength(args) > 200000 || [this.config.auth.apiKey, this.config.provider.codexHome, this.filename].some(secret => args.includes(secret) || args.includes(JSON.stringify(secret).slice(1, -1)))) throw new AIcliToAIapiError(502, 'unsafe_tool_arguments', 'External tool arguments exceeded output limits or contained private runtime data.');
         const tool = this.tools.put(input, { ...state, requestId: notification.requestId }, call.tool, call.arguments);
         yield { type: 'tool_calls', calls: [tool] }; return;
       }
