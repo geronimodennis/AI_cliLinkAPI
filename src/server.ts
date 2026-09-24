@@ -38,7 +38,7 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
       if (request.url === '/v1/models' && request.method === 'GET') {
         release = discovery.acquire(id);
         const models = await provider.models(signal);
-        json(response, 200, { object: 'list', data: models.map(m => ({ id: m.id, object: 'model', owned_by: 'codex', reasoning_efforts: m.efforts })) }); return;
+        json(response, 200, { object: 'list', data: models.map(m => ({ id: m.id, object: 'model', owned_by: m.providerId ?? 'unknown', reasoning_efforts: m.efforts })) }); return;
       }
       if (request.url !== '/v1/chat/completions' || request.method !== 'POST') throw new AIcliToAIapiError(404, 'not_found', 'Endpoint not found.');
       if (request.headers['x-session-id'] || request.headers['x-thread-id']) throw new AIcliToAIapiError(400, 'session_resume_unsupported', 'Each request starts an isolated session. Send conversation history in messages.');
@@ -57,7 +57,7 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
       let value: unknown; try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new AIcliToAIapiError(400, 'invalid_json', 'Request body must be valid JSON.'); }
       const parsed = parseRequest(value, entry => record({ event: 'openai_compatibility', level: 'debug', ...entry }));
       requestedStream = parsed.stream;
-      const selected = selectModel(parsed, await provider.models(signal), config.provider);
+      const selected = selectModel(parsed, await provider.models(signal), { defaultModel: config.compatibility.defaultModel ?? config.provider.defaultModel, defaultReasoning: config.provider.defaultReasoning });
       if (parsed.stream && !provider.capabilities.streaming) throw new AIcliToAIapiError(400, 'stream_unsupported', 'Provider does not support streaming.');
       const created = Math.floor(Date.now() / 1000);
       const base = { id, created, model: selected.model };

@@ -24,6 +24,21 @@ test('strict configuration rejects empty/placeholder keys, extra fields, modes a
   const c = fixtureConfig(); assert.throws(() => parseConfig({ ...c, provider: { ...c.provider, authentication: 'api-key' } }));
   assert.throws(() => parseConfig({ ...c, workspaces: { p: { path: '/x', access: 'full' } } }));
 });
+test('optional Antigravity CLI providers validate IDs, aliases, and defaults', () => {
+  const c = fixtureConfig();
+  const provider = { id: 'antigravity', type: 'antigravity-cli', agyPath: 'agy', modelAliases: { 'agy-flash': 'gemini-3.8-flash-high' } };
+  const parsed = parseConfig({ ...c, providers: [provider], compatibility: { defaultModel: 'agy-flash' } });
+  assert.equal(parsed.providers[0]!.id, 'antigravity');
+  assert.equal(parsed.providers[0]!.modelAliases['agy-flash'], 'gemini-3.8-flash-high');
+  assert.throws(() => parseConfig({ ...c, providers: [{ ...provider, id: 'codex' }] }));
+  assert.throws(() => parseConfig({ ...c, providers: [provider, provider] }));
+});
+test('providers-only configuration derives its internal Codex provider', () => {
+  const { provider, ...rest } = fixtureConfig();
+  const config = parseConfig({ ...rest, providers: [{ id: 'codex', ...provider }, { id: 'antigravity', type: 'antigravity-cli', agyPath: 'agy' }] });
+  assert.equal(config.provider.type, 'codex');
+  assert.equal(config.providers[0]!.id, 'antigravity');
+});
 test('canonical workspace validation rejects roots, secrets, aliases, overlapping and nonexistent dirs', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-test-'));
   try {

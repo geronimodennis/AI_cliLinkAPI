@@ -60,6 +60,7 @@ export class ResponseExtractor {
   }
 }
 export class CodexProvider implements Provider {
+  readonly id = 'codex';
   readonly capabilities = { streaming: true, sessions: false };
   private readonly active = new Set<Rpc>();
   private readonly tools: ToolSessions<Continuation>;
@@ -83,7 +84,7 @@ export class CodexProvider implements Provider {
       const models: Model[] = []; let cursor: string | null = null; const seen = new Set<string>();
       do {
         const page = modelPage.parse(await rpc.request('model/list', { limit: 100, includeHidden: false, cursor }, signal));
-        for (const item of page.data) if (!item.hidden && (!this.config.provider.allowedModels.length || this.config.provider.allowedModels.includes(item.model))) models.push({ id: item.model, efforts: item.supportedReasoningEfforts.map(e => e.reasoningEffort), defaultEffort: item.defaultReasoningEffort, isDefault: item.isDefault });
+        for (const item of page.data) if (!item.hidden && (!this.config.provider.allowedModels.length || this.config.provider.allowedModels.includes(item.model))) models.push({ id: item.model, nativeId: item.model, providerId: this.id, efforts: item.supportedReasoningEfforts.map(e => e.reasoningEffort), defaultEffort: item.defaultReasoningEffort, isDefault: item.isDefault });
         cursor = page.nextCursor;
         if (cursor && (seen.has(cursor) || seen.size >= 20)) throw new Error('Invalid catalog pagination');
         if (cursor) seen.add(cursor);

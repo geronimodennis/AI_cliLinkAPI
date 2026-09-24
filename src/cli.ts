@@ -15,6 +15,44 @@ import { normalizeError } from './errors.js';
 import { startupMessage } from './startup.js';
 
 export const defaultConfig = () => path.join(os.homedir(), '.aiclitoaiapi', 'aiclitoaiapi.json');
+const publicConfig = (config: Awaited<ReturnType<typeof loadConfig>> | ReturnType<typeof parseConfig>) => {
+  const { provider, providers, ...rest } = config;
+  return { ...rest, providers: [{ id: 'codex', ...provider }, ...providers] };
+};
+const helpText = () => [
+  'Commands:',
+  '  setup CONFIG TEMPLATE                 Create a private configuration.',
+  '  secure-config CONFIG                  Repair configuration permissions.',
+  '  rotate-key CONFIG                     Rotate the gateway API key.',
+  '  login CONFIG [--device-auth]          Sign in to the Codex provider.',
+  '  agy-login CONFIG PROVIDER_ID          Sign in to an Antigravity CLI provider.',
+  '  providers CONFIG                      List configured provider IDs.',
+  '  models CONFIG [PROVIDER_ID]           List models grouped by provider, or one provider.',
+  '  doctor CONFIG                         Check configured providers and models.',
+  '  serve CONFIG                          Start the HTTP API.',
+  '  help                                  Show this help.',
+  `Default CONFIG: ${defaultConfig()}`,
+].join('\n');
+const printModels = (groups: { id: string; models?: { id: string; nativeId?: string; efforts: string[]; defaultEffort: string; isDefault: boolean }[]; error?: string }[]) => {
+  const rows = groups.flatMap(group => group.error ? [{ provider: group.id, model: 'Unavailable', effort: '—', default: group.error }] : group.models!.map(model => ({ provider: group.id, model: model.id === (model.nativeId ?? model.id) ? model.id : `${model.id} → ${model.nativeId}`, effort: model.efforts.join(', '), default: model.isDefault ? 'yes' : '' })));
+  const widths = { provider: Math.max(8, ...rows.map(row => row.provider.length)), model: Math.max(5, ...rows.map(row => row.model.length)), effort: Math.max(16, ...rows.map(row => row.effort.length)), default: Math.max(7, ...rows.map(row => row.default.length)) };
+  const line = (row: typeof rows[number]) => `  ${row.provider.padEnd(widths.provider)}  ${row.model.padEnd(widths.model)}  ${row.effort.padEnd(widths.effort)}  ${row.default}`;
+  console.log('\n  AVAILABLE MODELS\n');
+  console.log(line({ provider: 'Provider', model: 'Model', effort: 'Reasoning efforts', default: 'Default' }));
+  console.log(`  ${'-'.repeat(widths.provider)}  ${'-'.repeat(widths.model)}  ${'-'.repeat(widths.effort)}  ${'-'.repeat(widths.default)}`);
+  if (rows.length) for (const row of rows) console.log(line(row)); else console.log('  No providers returned models.');
+  console.log();
+};
+const printProviders = (providers: { id: string; type: string; defaultModel: string | undefined }[]) => {
+  const rows = providers.map(provider => ({ id: provider.id, type: provider.type, model: provider.defaultModel ?? '—' }));
+  const widths = { id: Math.max(11, ...rows.map(row => row.id.length)), type: Math.max(13, ...rows.map(row => row.type.length)), model: Math.max(13, ...rows.map(row => row.model.length)) };
+  const line = (row: typeof rows[number]) => `  ${row.id.padEnd(widths.id)}  ${row.type.padEnd(widths.type)}  ${row.model}`;
+  console.log('\n  CONFIGURED PROVIDERS\n');
+  console.log(line({ id: 'Provider ID', type: 'Type', model: 'Default model' }));
+  console.log(`  ${'-'.repeat(widths.id)}  ${'-'.repeat(widths.type)}  ${'-'.repeat(widths.model)}`);
+  for (const row of rows) console.log(line(row));
+  console.log();
+};
 export function resolveConfigFilename(filename: string): string {
   // cmd.exe leaves $HOME literal; quoted tilde paths also need application expansion.
   const homePrefix = /^(?:~|\$HOME|\$\{HOME\}|%USERPROFILE%|\$env:USERPROFILE)(?=[\\/]|$)/i;
@@ -89,7 +127,7 @@ export async function setup(filename: string, template: string): Promise<void> {
   try {
     await protect(filename);
     await validatePaths(config, filename);
-    await writeFile(pending, JSON.stringify(config, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+    await writeFile(pending, JSON.stringify(publicConfig(config), null, 2) + '\n', { flag: 'wx', mode: 0o600 });
     await protect(pending); await rename(pending, filename);
   } catch (error) { await unlink(pending).catch(() => undefined); await unlink(filename).catch(() => undefined); throw error; }
 }
@@ -103,18 +141,43 @@ export async function rotate(filename: string): Promise<void> {
   const config = parseConfig({ ...input, auth: { apiKey: randomBytes(32).toString('base64url') } });
   await validatePaths(config, filename);
   const temp = filename + '.' + randomUUID() + '.tmp';
-  try { await writeFile(temp, JSON.stringify(config, null, 2) + '\n', { flag: 'wx', mode: 0o600 }); await protect(temp); await rename(temp, filename); }
+  try { await writeFile(temp, JSON.stringify(publicConfig(config), null, 2) + '\n', { flag: 'wx', mode: 0o600 }); await protect(temp); await rename(temp, filename); }
   finally { await unlink(temp).catch(() => undefined); }
 }
 async function main() {
   const [command = 'help', configArgument = defaultConfig(), template] = process.argv.slice(2);
+  if (command === 'help') { console.log(helpText()); return; }
   const filename = resolveConfigFilename(configArgument);
   if (command === 'secure-config') { await secureConfig(filename); console.log('Configuration permissions repaired. File contents and API key were not changed.'); return; }
   if (command === 'setup') { if (!template) throw new Error('Usage: aiclitoaiapi setup ABSOLUTE_CONFIG_PATH TEMPLATE_JSON_PATH'); await setup(filename, template); console.log('Configuration created privately. Key was not printed.'); return; }
   if (command === 'rotate-key') { await rotate(filename); console.log('AIcliToAIapi key rotated. Restart the aiclitoaiapi and update clients. Key was not printed.'); return; }
-  if (!['serve', 'login', 'doctor'].includes(command)) { console.log('Commands: setup CONFIG TEMPLATE | secure-config CONFIG | rotate-key CONFIG | login CONFIG [--device-auth] | doctor CONFIG | serve CONFIG\nDefault CONFIG: user home/.aiclitoaiapi/aiclitoaiapi.json'); return; }
+  if (!['serve', 'login', 'agy-login', 'providers', 'models', 'doctor'].includes(command)) { console.log(helpText()); return; }
   await verifyConfigDirectory(path.dirname(filename)); await verifyPrivate(filename);
-  const config = await loadConfig(filename); await verifyPrivate(config.provider.codexHome);
+  const config = await loadConfig(filename);
+  if (command === 'providers') {
+    if (template) throw new Error('Usage: aiclitoaiapi providers ABSOLUTE_CONFIG_PATH');
+    printProviders([{ id: 'codex', type: 'codex', defaultModel: config.provider.defaultModel }, ...config.providers.map(provider => ({ id: provider.id, type: provider.type, defaultModel: provider.defaultModel }))]);
+    return;
+  }
+  if (command === 'agy-login') {
+    if (!template) throw new Error('Usage: aiclitoaiapi agy-login ABSOLUTE_CONFIG_PATH PROVIDER_ID');
+    const provider = config.providers.find(item => item.id === template);
+    if (!provider) throw new Error(`No Antigravity CLI provider named ${template}.`);
+    const child = spawn(provider.agyPath, [], { cwd: os.homedir(), stdio: 'inherit', windowsHide: false });
+    await new Promise<void>((resolve, reject) => { child.once('error', () => reject(new Error(`Could not start Antigravity CLI provider ${provider.id}. Check provider.agyPath.`))); child.once('exit', code => code === 0 ? resolve() : reject(new Error('Antigravity CLI login did not complete.'))); });
+    return;
+  }
+  if (command === 'models') {
+    const provider = createProvider(config, await realpath(filename));
+    try {
+      const groups = template
+        ? [{ id: template, models: await provider.modelsFor(template, AbortSignal.timeout(30000)) }]
+        : await provider.modelsByProvider(AbortSignal.timeout(30000));
+      printModels(groups);
+    } finally { await provider.close(); }
+    return;
+  }
+  await verifyPrivate(config.provider.codexHome);
   await verifyRuntime(config.provider.codexHome);
   if (command === 'login') {
     if (template && template !== '--device-auth') throw new Error('Only --device-auth is accepted after the config path.');

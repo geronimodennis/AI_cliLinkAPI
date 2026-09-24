@@ -32,6 +32,7 @@ test('request logs pair starts and finishes, hide URL secrets, and report stream
   } finally { await f.close(); }
 });
 class Fake implements Provider {
+  readonly id = 'fake';
   readonly capabilities = { streaming: true, sessions: false };
   calls = 0; modelCalls = 0; cancelled = false;
   lastInput: Generation | undefined;

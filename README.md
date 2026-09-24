@@ -6,7 +6,15 @@ Upgrading from an earlier name: existing private configuration and credentials a
 
 [npm package](https://www.npmjs.com/package/aiclitoaiapi) · [GitHub repository](https://github.com/geronimodennis/AIcliToAIapi) · [Report an issue](https://github.com/geronimodennis/AIcliToAIapi/issues)
 
-Native Node.js/strict TypeScript gateway for a **ChatGPT-authenticated Codex** runtime. The aiclitoaiapi key protects this HTTP service; it is not an OpenAI API key. No containers, VMs, direct OpenAI API client, browser-cookie extraction, or unofficial ChatGPT endpoints are used.
+Native Node.js/strict TypeScript gateway for a **ChatGPT-authenticated Codex** runtime, with optional official Google Antigravity CLI (`agy`) providers. The aiclitoaiapi key protects this HTTP service; it is not an OpenAI API key. No containers, VMs, direct OpenAI API client, browser-cookie extraction, or unofficial ChatGPT endpoints are used.
+
+## Multiple providers
+
+Configure every runtime in the `providers` array. The Codex entry uses the reserved ID `codex`; add Antigravity CLI entries alongside it. `GET /v1/models` aggregates models from every healthy provider and returns the provider in `owned_by`; `POST /v1/chat/completions` routes by the requested model ID. Model IDs must be unique across providers, so use `modelAliases` when two providers expose the same ID. The Antigravity provider uses the official `agy --input-format stream-json --output-format stream-json` protocol. It supports the CLI's built-in workspace and shell tools, but does not yet support OpenAI external function-tool continuation.
+
+Sign in to a configured Antigravity provider with `aiclitoaiapi agy-login CONFIG PROVIDER_ID`, for example `aiclitoaiapi agy-login "C:/Users/YOUR_USER/.aiclitoaiapi/aiclitoaiapi.json" antigravity`. This starts the official interactive CLI; its keyring credentials are never read by aiclitoaiapi.
+
+See the [provider configuration and quick-test guide](docs/configuration.md#providers) for complete Codex and Antigravity examples, workspace capability controls, and ready-to-run PowerShell, macOS Terminal, and Linux shell requests.
 
 **Current delivery status:** HTTP routing, Codex app-server adapter, discovery, permissions profiles, setup, cancellation, and tests are implemented. By default, native Windows agent execution is attempted without isolation qualification probes; setting `provider.allowUnqualifiedWindowsExecution=false` restores the platform block. The available Windows host failed sandbox initialization. Linux/macOS execution requires the real native isolation probes to pass on that host; those platforms have not been executed during this build. Real text completion and SSE have now succeeded on the available Windows host, and an n8n AI Agent node produced output. Live external-tool execution remains limited by a code-mode host error; full built-in n8n Assistant building/debugging is unverified. See [verification](docs/verification.md) and [security](docs/security.md). This is not a claim of a production-qualified cross-platform release.
 

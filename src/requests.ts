@@ -25,7 +25,7 @@ export function parseRequest(input: unknown, diagnostic?: (entry: CompatibilityD
   if (data.stream_options && !data.stream) throw new AIcliToAIapiError(400, 'unsupported_request', 'stream_options requires stream=true.', 'stream_options');
   return data;
 }
-export function selectModel(request: ReturnType<typeof parseRequest>, models: Model[], config: Config['provider']) {
+export function selectModel(request: ReturnType<typeof parseRequest>, models: Model[], config: Pick<Config['provider'], 'defaultModel' | 'defaultReasoning'>) {
   const model = models.find(m => m.id === (request.model ?? config.defaultModel)) ?? (!request.model && !config.defaultModel ? models.find(m => m.isDefault) ?? models[0] : undefined);
   if (!model) throw new AIcliToAIapiError(400, 'unsupported_model', 'Requested model is not in the available Codex model catalog.', 'model');
   const raw = request.reasoning_effort ?? config.defaultReasoning ?? model.defaultEffort;

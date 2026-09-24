@@ -151,19 +151,31 @@ This is a setup template, not a ready-to-serve credential file. Replace `YOUR_US
     "toolTimeoutMs": 300000,
     "maxPendingTools": 8
   },
-  "provider": {
-    "type": "codex",
-    "authentication": "chatgpt",
-    "codexHome": "C:/Users/YOUR_USER/.aiclitoaiapi/codex",
-    "allowedModels": [],
-    "allowUnqualifiedWindowsExecution": true,
-    "allowProjectSkills": true,
-    "allowSymbolicLinks": true
-  },
+  "providers": [
+    {
+      "id": "codex",
+      "type": "codex",
+      "authentication": "chatgpt",
+      "codexHome": "C:/Users/YOUR_USER/.aiclitoaiapi/codex",
+      "allowedModels": [],
+      "allowUnqualifiedWindowsExecution": true,
+      "allowProjectSkills": true,
+      "allowSymbolicLinks": true
+    },
+    {
+      "id": "antigravity",
+      "type": "antigravity-cli",
+      "agyPath": "C:/Users/YOUR_USER/AppData/Local/agy/bin/agy.exe",
+      "allowedModels": [],
+      "modelAliases": {},
+      "allowUnqualifiedExecution": true
+    }
+  ],
   "workspaces": {
     "project-a": {
       "path": "C:/Projects/project-a",
-      "access": "read-write"
+      "access": "read-write",
+      "capabilities": { "fileRead": true, "fileWrite": true, "shell": false, "sandbox": true }
     },
     "reference-docs": {
       "path": "C:/Documents/reference",
@@ -209,19 +221,52 @@ The entire `compatibility` object may be omitted.
 
 An explicit workspace header overrides the default. An invalid header is rejected even when the default is valid. Pending tool continuations are held in memory and are lost on restart; they reserve their workspace until consumed or expired.
 
-### Provider
+### Providers
+
+`providers` is the only public provider configuration format. It must contain exactly one Codex entry with `id: "codex"`; add zero or more Antigravity CLI entries with distinct IDs. Do not add the retired top-level `provider` object. List the effective configuration with `aiclitoaiapi providers CONFIG`, and discover models with `aiclitoaiapi models CONFIG [PROVIDER_ID]`.
+
+#### Codex provider
 
 | Setting | Default | Accepted values and behavior |
 | --- | --- | --- |
-| `provider.type` | Required | Must be `"codex"`. |
-| `provider.authentication` | Required | Must be `"chatgpt"`. |
-| `provider.codexHome` | Required | Absolute native path to dedicated, private Codex storage. Setup can create it; normal startup requires it to exist. |
-| `provider.allowedModels` | `[]` | Exact model IDs to allow. An empty array exposes all visible models discovered from Codex. Nonempty IDs may contain letters, digits, `.`, `_`, and `-`. |
-| `provider.defaultModel` | Unset | Exact model ID used when the request omits `model`. It must be present in the available, filtered catalog when used. |
-| `provider.defaultReasoning` | Unset | Effort used when the request omits `reasoning_effort`. Must be supported by the chosen model. |
-| `provider.allowUnqualifiedWindowsExecution` | `true` | Boolean. On Windows, permits execution attempts without qualification probes. Explicit `false` blocks Windows generation. Does not bypass Linux/macOS probes. |
-| `provider.allowProjectSkills` | `true` | Boolean. Allows discovery and use of project skills. Set to `false` to explicitly disable skills found by the workspace scan. Project configuration remains ignored and bundled runtime skills remain disabled. |
-| `provider.allowSymbolicLinks` | `true` | Boolean. Allows existing symbolic links and Windows junctions whose resolved targets stay inside the same workspace. Set to `false` to reject them. External targets, broken links, directory cycles, and hard-linked files remain rejected. |
+| `type` | Required | Must be `"codex"`. |
+| `authentication` | Required | Must be `"chatgpt"`. |
+| `codexHome` | Required | Absolute native path to dedicated, private Codex storage. Setup can create it; normal startup requires it to exist. |
+| `allowedModels` | `[]` | Exact model IDs to allow. An empty array exposes all visible models discovered from Codex. |
+| `defaultModel` | Unset | Exact model ID used when the request omits `model`. |
+| `defaultReasoning` | Unset | Effort used when the request omits `reasoning_effort`. |
+| `allowUnqualifiedWindowsExecution` | `true` | On Windows, permits execution attempts without qualification probes. Explicit `false` blocks Windows generation. |
+| `allowProjectSkills` | `true` | Allows project skills; project configuration remains ignored. |
+| `allowSymbolicLinks` | `true` | Allows internal symbolic links and Windows junctions; external/broken/cyclic links and hard links remain rejected. |
+
+Sign in with `aiclitoaiapi login CONFIG`. The Codex provider must always be present even if requests will use only Antigravity models.
+
+#### Antigravity CLI provider
+
+Install and authenticate the official `agy` CLI for the same OS account that runs the gateway. On Windows its standard executable location is `C:/Users/YOUR_USER/AppData/Local/agy/bin/agy.exe`; on macOS/Linux, use `"agy"` when it is on `PATH`, or an absolute executable path. Then run `aiclitoaiapi agy-login CONFIG antigravity` and confirm models with `aiclitoaiapi models CONFIG antigravity`.
+
+| Setting | Default | Behavior |
+| --- | --- | --- |
+| `id` | Required | Unique provider ID; cannot be `codex`. |
+| `type` | Required | Must be `"antigravity-cli"`. |
+| `agyPath` | `agy` | Absolute CLI path or a PATH-resolved executable name. |
+| `allowedModels` | `[]` | Empty exposes all IDs reported by `agy models`; otherwise only exact listed IDs are exposed. |
+| `modelAliases` | `{}` | Maps a public gateway model ID to a native `agy` model ID. Use this to avoid duplicate model IDs across providers. |
+| `defaultModel` | Unset | Model used only when the request omits `model`. |
+| `defaultReasoning` | Unset | `low`, `medium`, or `high`; model IDs ending in one of these effort suffixes default to that suffix. |
+| `allowUnqualifiedExecution` | `true` | Reserved configuration compatibility setting for the CLI provider. |
+
+For example, expose `gemini-3.8-flash-high` unchanged, or publish it as `fast-code` with `"modelAliases": { "fast-code": "gemini-3.8-flash-high" }`. Clients must use the public ID shown by `aiclitoaiapi models`, not a provider-prefixed name such as `antigravity/gemini-3.8-flash-high`.
+
+#### Workspace capabilities
+
+Capabilities are per workspace and control Antigravity built-in tools. Omit `capabilities` to keep tool execution conservative. `fileRead` permits workspace file reads, `fileWrite` uses Antigravity edit-only mode, `shell` enables its shell tools and auto-approval, and `sandbox` defaults to `true`. Shell access is independent from file write access:
+
+```json
+"capabilities": { "fileRead": true, "fileWrite": true, "shell": false, "sandbox": true }
+```
+
+Set `shell: true` only for trusted clients and workspaces. A `read-only` workspace must not be used for writes regardless of these settings.
 
 Model selection order is request `model`, configured `defaultModel`, catalog default, then first available model. An explicitly requested/configured unavailable model fails instead of silently falling back.
 
@@ -263,9 +308,9 @@ The fragment above belongs in the full configuration; it is not a standalone con
 
 ## Project skills and symbolic links
 
-Both settings default to `true`, including in existing configurations that omit them. They belong under `provider` and apply to all configured workspaces. Use JSON booleans (`true` or `false`), not quoted strings.
+Both settings default to `true`, including in existing configurations that omit them. They belong in the Codex entry of `providers` and apply to all configured workspaces. Use JSON booleans (`true` or `false`), not quoted strings.
 
-To allow project skills and internal links, merge these fields into your existing `provider` object:
+To allow project skills and internal links, merge these fields into your existing Codex provider entry:
 
 ```json
 {
@@ -283,13 +328,13 @@ To restrict both, use:
 }
 ```
 
-These are provider fragments, not complete configuration files. Preserve the other provider fields and your existing API key. The settings are independent: for example, you can allow skills while rejecting symbolic links. Stop and restart the server after editing the private configuration. For compiled execution, run `npm run build` after updating application source, then restart with `npm start -- "~/.aiclitoaiapi/aiclitoaiapi.json"`.
+These are Codex provider fragments, not complete configuration files. Preserve the other provider fields and your existing API key. The settings are independent: for example, you can allow skills while rejecting symbolic links. Stop and restart the server after editing the private configuration. For compiled execution, run `npm run build` after updating application source, then restart with `npm start -- "~/.aiclitoaiapi/aiclitoaiapi.json"`.
 
 ### Project skills
 
 Place project skills in `<workspace>/.agents/skills/<skill-name>/SKILL.md`. With `allowProjectSkills: true`, the runtime can discover and use them. With `false`, AIcliToAIapi explicitly disables the skill files found in the workspace scan; their folders can remain in place.
 
-Allowing skills does not load project `.codex/config.toml`: the runtime still treats the workspace as untrusted for project configuration. Custom configuration and skills in the dedicated `provider.codexHome` remain rejected, and bundled runtime skills remain disabled. Parent-directory configuration and instructions no longer cause a workspace-validation error. This change removes the presence check; it does not guarantee that the runtime ignores ancestor instructions or skills.
+Allowing skills does not load project `.codex/config.toml`: the runtime still treats the workspace as untrusted for project configuration. Custom configuration and skills in the dedicated Codex home remain rejected, and bundled runtime skills remain disabled. Parent-directory configuration and instructions no longer cause a workspace-validation error. This change removes the presence check; it does not guarantee that the runtime ignores ancestor instructions or skills.
 
 ### Symbolic links and Windows junctions
 
@@ -410,6 +455,33 @@ $reply = Invoke-RestMethod -Method Post -Uri "$gatewayBase/chat/completions" -He
 $reply.choices[0].message.content
 ```
 
+For Antigravity, set the model explicitly to one shown by `aiclitoaiapi models CONFIG antigravity` (for example, `gemini-3.8-flash-high`). The following is a complete PowerShell quick test; it reads the local key without printing it:
+
+```powershell
+$configFile = "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
+$config = Get-Content -LiteralPath $configFile -Raw | ConvertFrom-Json
+$headers = @{ Authorization = "Bearer $($config.auth.apiKey)"; 'X-Workspace-ID' = 'project-a' }
+$body = @{ model = 'gemini-3.8-flash-high'; messages = @(@{ role = 'user'; content = 'Reply with exactly: Antigravity is connected.' }) } | ConvertTo-Json -Depth 6
+Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/v1/chat/completions' -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 190
+```
+
+### macOS Terminal and Linux shell quick test
+
+Start the gateway in one terminal, then run this in another terminal. This works in both macOS Terminal and a Linux POSIX shell; replace `project-a` and the model ID if your configuration differs.
+
+```sh
+CONFIG="$HOME/.aiclitoaiapi/aiclitoaiapi.json"
+API_KEY="$(node -e 'const fs=require("fs"); console.log(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).auth.apiKey)' "$CONFIG")"
+curl --fail-with-body --request POST 'http://127.0.0.1:3000/v1/chat/completions' \
+  --header "Authorization: Bearer $API_KEY" \
+  --header 'Content-Type: application/json' \
+  --header 'X-Workspace-ID: project-a' \
+  --data '{"model":"gemini-3.8-flash-high","messages":[{"role":"user","content":"Reply with exactly: Antigravity is connected."}]}'
+unset API_KEY
+```
+
+To test Codex instead, first run `aiclitoaiapi models "$CONFIG" codex`, replace the model value with one of its displayed IDs, and rerun the same request. Do not send a provider prefix in the `model` field.
+
 This second request performs a real model call and can consume account usage. Do not distribute the full private configuration to a remote n8n host; enter only the client API key into its credential store.
 
 ## Maintenance commands
@@ -455,10 +527,10 @@ The configuration directory must be dedicated and contain only the config file a
 | `400 unsupported_request` | Remove unsupported sampling, token, strict-schema, or output-format options. Use text messages and Chat Completions. |
 | `400 unsupported_model` | Query `/v1/models`; use an available ID allowed by the filter. Review `defaultModel` too. |
 | `400 unsupported_reasoning_effort` | Use an effort listed for the selected model or omit the setting. |
-| `403 workspace_link` | Check `provider.allowSymbolicLinks`. When enabled, link targets must exist and resolve inside the same workspace without directory cycles. Hard-linked files remain blocked. Restart after changing the setting. |
+| `403 workspace_link` | Check the Codex provider's `allowSymbolicLinks`. When enabled, link targets must exist and resolve inside the same workspace without directory cycles. Hard-linked files remain blocked. Restart after changing the setting. |
 | Old `403 ancestor_configuration` message | The ancestor-directory restriction has been removed. Rebuild and restart the gateway to use the updated code. Configuration-directory permissions are a separate check and still apply. |
 | Old `403 workspace_config` message | Current code permits project `.codex` and `.agents` folders. Rebuild and restart the running gateway to pick up the update; these folders no longer cause this error merely by existing. |
-| Project skill unavailable | Check `provider.allowProjectSkills`, the project's `.agents/skills/<name>/SKILL.md` layout, and that the server was restarted. Custom skills in the dedicated Codex home are still rejected. |
+| Project skill unavailable | Check the Codex provider's `allowProjectSkills`, the project's `.agents/skills/<name>/SKILL.md` layout, and that the server was restarted. Custom skills in the dedicated Codex home are still rejected. |
 | `409 workspace_busy` | A request or external tool continuation holds the workspace. Wait for completion/expiry; avoid concurrent workflows against the same workspace. |
 | `409 tool_session_expired` | A tool continuation expired or was lost on restart. Check whether the external action ran before deliberately restarting the workflow. |
 | `413 request_too_large` | Reduce the request body or raise `maxBodyBytes` within its allowed range. |
