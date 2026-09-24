@@ -28,7 +28,7 @@ const helpText = () => [
   '  login CONFIG [--device-auth]          Sign in to the Codex provider.',
   '  agy-login CONFIG PROVIDER_ID          Sign in to an Antigravity CLI provider.',
   '  providers CONFIG                      List configured provider IDs.',
-  '  config CONFIG                         Show the active configuration (API key redacted).',
+  '  config [CONFIG] [--show-secrets]       Show the active configuration.',
   '  models CONFIG [PROVIDER_ID]           List models grouped by provider, or one provider.',
   '  doctor CONFIG                         Check configured providers and models.',
   '  serve CONFIG                          Start the HTTP API.',
@@ -64,10 +64,10 @@ const printSetupDetails = (config: Config, action: 'created' | 'repaired') => {
   console.log(`  Max concurrency  ${config.server.maxConcurrency}`);
   console.log(`  Max body bytes   ${config.server.maxBodyBytes}`);
   console.log('\n  GATEWAY API KEY (shown once; store it securely)');
-  console.log(`  ${config.server.showSecrets ? config.auth.apiKey : 'configured (redacted)'}`);
+  console.log('  configured (redacted; use config --show-secrets when needed)');
   console.log();
 };
-const printConfiguration = (config: Config, filename: string) => {
+const printConfiguration = (config: Config, filename: string, showSecrets = false) => {
   console.log('\n  ACTIVE CONFIGURATION\n');
   console.log(`  Configuration file  ${filename}`);
   console.log('\n  SERVER');
@@ -77,7 +77,7 @@ const printConfiguration = (config: Config, filename: string) => {
   console.log(`  Max concurrency  ${config.server.maxConcurrency}`);
   console.log(`  Max body bytes   ${config.server.maxBodyBytes}`);
   console.log('\n  AUTHENTICATION');
-  console.log(`  Gateway API key  ${config.server.showSecrets ? config.auth.apiKey : 'configured (redacted)'}`);
+  console.log(`  Gateway API key  ${showSecrets ? config.auth.apiKey : 'configured (redacted)'}`);
   console.log(`\n  DEFAULT WORKSPACE  ${config.compatibility.defaultWorkspace ?? '—'}`);
   printProviders([{ id: 'codex', type: 'codex', defaultModel: config.provider.defaultModel }, ...config.providers.map(provider => ({ id: provider.id, type: provider.type, defaultModel: provider.defaultModel }))]);
   console.log('  WORKSPACES\n');
@@ -102,7 +102,7 @@ const generatedSetupConfig = (filename: string, workspacePath = process.cwd(), d
     ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'agy', 'bin', 'agy.exe')
     : 'agy';
   return {
-    server: { host: '127.0.0.1', port: 3000, timeoutMs: 180000, maxConcurrency: 2, maxBodyBytes: 262144, showSecrets: false },
+    server: { host: '127.0.0.1', port: 3000, timeoutMs: 180000, maxConcurrency: 2, maxBodyBytes: 262144 },
     auth: { apiKey: 'REPLACE_WITH_A_SECURE_RANDOM_KEY' },
     compatibility: { ...(defaultWorkspace ? { defaultWorkspace: 'workspace' } : {}), toolTimeoutMs: 300000, maxPendingTools: 8 },
     providers: [
@@ -241,8 +241,12 @@ export async function rotate(filename: string): Promise<void> {
   finally { await unlink(temp).catch(() => undefined); }
 }
 async function main() {
-  const argv = process.argv.slice(2);
-  const [command = 'help', configArgument = defaultConfig(), template] = argv;
+  const argv = process.argv.slice(2).filter(argument => argument !== '--');
+  const [command = 'help', ...commandArgs] = argv;
+  const configFlags = new Set(['--show-secrets', '--show-secret', 'show-secrets', 'show-secret', 'show-secrete']);
+  const showSecrets = command === 'config' && commandArgs.some(argument => configFlags.has(argument));
+  const positional = command === 'config' ? commandArgs.filter(argument => !configFlags.has(argument)) : commandArgs;
+  const [configArgument = defaultConfig(), template] = positional;
   if (command === 'help') { console.log(helpText()); return; }
   const filename = resolveConfigFilename(configArgument);
   if (command === 'secure-config') { await secureConfig(filename); console.log('Configuration permissions repaired. File contents and API key were not changed.'); return; }
@@ -273,8 +277,8 @@ async function main() {
     return;
   }
   if (command === 'config') {
-    if (template) throw new Error('Usage: aiclitoaiapi config [ABSOLUTE_CONFIG_PATH]');
-    printConfiguration(config, filename);
+    if (template) throw new Error('Usage: aiclitoaiapi config [ABSOLUTE_CONFIG_PATH] [--show-secrets]');
+    printConfiguration(config, filename, showSecrets);
     return;
   }
   if (command === 'agy-login') {

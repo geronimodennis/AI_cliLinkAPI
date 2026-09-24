@@ -140,8 +140,7 @@ This is a setup template, not a ready-to-serve credential file. Replace `YOUR_US
     "port": 3000,
     "timeoutMs": 180000,
     "maxConcurrency": 2,
-    "maxBodyBytes": 262144,
-    "showSecrets": false
+    "maxBodyBytes": 262144
   },
   "auth": {
     "apiKey": "REPLACE_WITH_A_SECURE_RANDOM_KEY"
@@ -200,7 +199,6 @@ The entire `server` object may be omitted to use its defaults.
 | `server.timeoutMs` | `180000` | Integer from 1000 to 3600000; maximum request duration in milliseconds. Timeout cancels execution, but prior side effects are not rolled back. |
 | `server.maxConcurrency` | `2` | Integer from 1 to 16. Limits generation requests; model discovery has a separate pool of the same size. A workspace permits one active generation at a time. |
 | `server.maxBodyBytes` | `262144` | Integer from 1024 to 1048576. Maximum POST body size in bytes; default is 256 KiB. |
-| `server.showSecrets` | `false` | Set to `true` only in a private terminal to show the gateway API key in `setup` and `config` output. |
 
 ### Authentication
 
@@ -490,7 +488,7 @@ This second request performs a real model call and can consume account usage. Do
 | Command | Purpose |
 | --- | --- |
 | `setup [CONFIG] [TEMPLATE]` | With no arguments in an interactive terminal, start the provider-login/workspace wizard using the default home configuration path. Otherwise create a configuration from the supplied/default path and optional template; repairs an existing configuration only when its API key is missing. |
-| `config [CONFIG]` | Display server, provider, compatibility, and workspace settings. The gateway API key is redacted unless `server.showSecrets` is `true`. |
+| `config [CONFIG] [--show-secrets]` | Display server, provider, compatibility, and workspace settings. The API key is redacted by default; pass `--show-secrets` only in a private terminal to display it once. |
 | `secure-config CONFIG` | Repair permissions without rotating the key or changing configuration content |
 | `login CONFIG [--device-auth]` | Sign the dedicated runtime into ChatGPT |
 | `doctor CONFIG` | Report platform mode and query the authenticated model catalog |
