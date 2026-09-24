@@ -21,7 +21,7 @@ const publicConfig = (config: Awaited<ReturnType<typeof loadConfig>> | ReturnTyp
 };
 const helpText = () => [
   'Commands:',
-  '  setup CONFIG TEMPLATE                 Create a private configuration.',
+  '  setup CONFIG [TEMPLATE]               Create a private configuration.',
   '  secure-config CONFIG                  Repair configuration permissions.',
   '  rotate-key CONFIG                     Rotate the gateway API key.',
   '  login CONFIG [--device-auth]          Sign in to the Codex provider.',
@@ -60,6 +60,22 @@ export function resolveConfigFilename(filename: string): string {
   if (!path.isAbsolute(expanded)) throw new Error('Configuration filename must be absolute. Use "~/.aiclitoaiapi/aiclitoaiapi.json" or a full path such as "C:/Users/your-user/.aiclitoaiapi/aiclitoaiapi.json".');
   return path.normalize(expanded);
 }
+const generatedSetupConfig = (filename: string) => {
+  const configDirectory = path.dirname(filename);
+  const agyPath = process.platform === 'win32'
+    ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'agy', 'bin', 'agy.exe')
+    : 'agy';
+  return {
+    server: { host: '127.0.0.1', port: 3000, timeoutMs: 180000, maxConcurrency: 2, maxBodyBytes: 262144 },
+    auth: { apiKey: 'REPLACE_WITH_A_SECURE_RANDOM_KEY' },
+    compatibility: { defaultWorkspace: 'workspace', toolTimeoutMs: 300000, maxPendingTools: 8 },
+    providers: [
+      { id: 'codex', type: 'codex', authentication: 'chatgpt', codexHome: path.join(configDirectory, 'codex'), allowedModels: [], allowUnqualifiedWindowsExecution: true, allowProjectSkills: true, allowSymbolicLinks: true },
+      { id: 'antigravity', type: 'antigravity-cli', agyPath, allowedModels: [], modelAliases: {}, allowUnqualifiedExecution: true }
+    ],
+    workspaces: { workspace: { path: process.cwd(), access: 'read-write', capabilities: { fileRead: true, fileWrite: true, shell: false, sandbox: true } } }
+  };
+};
 async function privateDirectory(directory: string) {
   const created = await mkdir(directory, { recursive: true, mode: 0o700 });
   if (created) await protect(directory, true);
@@ -109,9 +125,9 @@ export async function secureConfig(filename: string): Promise<void> {
   }
   await verifyPrivate(directory);
 }
-export async function setup(filename: string, template: string): Promise<void> {
+export async function setup(filename: string, template?: string): Promise<void> {
   filename = resolveConfigFilename(filename);
-  const input = await readJson(template);
+  const input = template ? await readJson(template) : generatedSetupConfig(filename);
   if (!input || typeof input !== 'object') throw new Error('Invalid template.');
   const candidate = input as Record<string, unknown>;
   candidate.auth = { apiKey: randomBytes(32).toString('base64url') };
@@ -149,7 +165,7 @@ async function main() {
   if (command === 'help') { console.log(helpText()); return; }
   const filename = resolveConfigFilename(configArgument);
   if (command === 'secure-config') { await secureConfig(filename); console.log('Configuration permissions repaired. File contents and API key were not changed.'); return; }
-  if (command === 'setup') { if (!template) throw new Error('Usage: aiclitoaiapi setup ABSOLUTE_CONFIG_PATH TEMPLATE_JSON_PATH'); await setup(filename, template); console.log('Configuration created privately. Key was not printed.'); return; }
+  if (command === 'setup') { await setup(filename, template); console.log(`Configuration created privately${template ? ' from the supplied template' : ' with the generated multi-provider template'}. Key was not printed.`); return; }
   if (command === 'rotate-key') { await rotate(filename); console.log('AIcliToAIapi key rotated. Restart the aiclitoaiapi and update clients. Key was not printed.'); return; }
   if (!['serve', 'login', 'agy-login', 'providers', 'models', 'doctor'].includes(command)) { console.log(helpText()); return; }
   await verifyConfigDirectory(path.dirname(filename)); await verifyPrivate(filename);

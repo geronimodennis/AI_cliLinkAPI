@@ -67,29 +67,26 @@ Use `aiclitoaiapi serve`, without npm's `--` separator. Running `aiclitoaiapi` a
 
 This is a Node.js CLI, so Node.js must remain installed. `npm link` points to this checkout: keep its path, dependencies, and compiled `dist` files available, and rebuild with `npm run build` after source changes. If PowerShell blocks the generated script, use `aiclitoaiapi.cmd`. If the command is not found, ensure the directory reported by `npm prefix -g` is on your Windows `PATH`, then reopen the terminal. On Linux/macOS, use `npm link`; the command is installed under the global prefix's `bin` directory.
 
-### 2. Prepare workspace folders and a template
+### 2. Prepare workspace folders
 
 Create the folders that the agent may use. For example, on Windows:
 
 ```powershell
 New-Item -ItemType Directory -Force -Path C:/Projects/project-a
 New-Item -ItemType Directory -Force -Path C:/Documents/reference
-$packageRoot = Join-Path (npm root -g) 'aiclitoaiapi'
-Copy-Item (Join-Path $packageRoot 'aiclitoaiapi.example.json') ./aiclitoaiapi.setup.json
-notepad ./aiclitoaiapi.setup.json
 ```
 
-Edit the template's username and paths. Keep only workspaces you need. The template contains a placeholder key; `setup` replaces it with a securely generated key. Do not put a real key into this repository template.
+`setup` can generate the initial configuration without a template. It uses the current directory as a `workspace` read-write workspace, creates a Codex home alongside the configuration file, includes the installed-platform Antigravity CLI path, and generates the gateway key. Edit the generated configuration before serving if the workspace or paths differ.
 
-The template above comes from the installed npm package (or linked checkout). From a source checkout, you can also copy `./aiclitoaiapi.example.json` directly. On Linux/macOS, copy it with `cp "$(npm root -g)/aiclitoaiapi/aiclitoaiapi.example.json" ./aiclitoaiapi.setup.json`, then edit native absolute workspace and Codex-home paths.
+To start with custom paths or multiple workspaces, provide the optional template argument. Copy `aiclitoaiapi.example.json`, edit its paths, then pass it as the second setup argument.
 
 ### 3. Create the private configuration
 
 ```powershell
-aiclitoaiapi setup "~/.aiclitoaiapi/aiclitoaiapi.json" ./aiclitoaiapi.setup.json
+aiclitoaiapi setup "~/.aiclitoaiapi/aiclitoaiapi.json"
 ```
 
-Setup creates private configuration and Codex-home directories, generates a key, and checks workspace boundaries. It never overwrites an existing configuration. If you already have a configuration, edit it instead of running setup again.
+Setup creates private configuration and Codex-home directories, generates a key, and checks workspace boundaries. It never overwrites an existing configuration. If you already have a configuration, edit it instead of running setup again. To use a custom template: `aiclitoaiapi setup CONFIG TEMPLATE_JSON_PATH`.
 
 The default configuration location is the runtime user's home directory plus `.aiclitoaiapi/aiclitoaiapi.json`, for example:
 
@@ -488,14 +485,14 @@ This second request performs a real model call and can consume account usage. Do
 
 | Command | Purpose |
 | --- | --- |
-| `setup CONFIG TEMPLATE` | Create a new private configuration and generated key; refuses overwrite |
+| `setup CONFIG [TEMPLATE]` | Create a new private configuration and generated key; without a template, generate the initial multi-provider configuration from the current directory; refuses overwrite |
 | `secure-config CONFIG` | Repair permissions without rotating the key or changing configuration content |
 | `login CONFIG [--device-auth]` | Sign the dedicated runtime into ChatGPT |
 | `doctor CONFIG` | Report platform mode and query the authenticated model catalog |
 | `serve CONFIG` | Start the gateway until stopped |
 | `rotate-key CONFIG` | Generate and atomically store a replacement gateway key |
 
-Prefix each with `aiclitoaiapi`. Except for setup's template argument, the CLI can use its default configuration path when `CONFIG` is omitted.
+Prefix each with `aiclitoaiapi`. The template is optional; CLI commands can use their default configuration path when `CONFIG` is omitted.
 
 Configuration does not hot-reload. Stop the server, edit its private file, and restart. If using `npm start`, rebuild after source changes; `npm run aiclitoaiapi -- serve` runs TypeScript source directly from a checkout.
 

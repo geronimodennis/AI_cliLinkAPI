@@ -64,12 +64,12 @@ Copy `aiclitoaiapi.example.json` from the installed package (under `npm root -g`
 
 Keep private configuration and Codex home outside **every** workspace, preferably in a dedicated service account's private directory. Workspaces cannot overlap or be filesystem roots. The service rejects custom Codex configuration, hooks, plugins, rules and skills in its dedicated Codex home. Project `.codex`/`.agents` folders may remain in place: the runtime treats the workspace as untrusted and skips project configuration; project skills in `.agents/skills` are allowed by default. Set `provider.allowProjectSkills` to `false` and restart the server to disable workspace skills. Bundled runtime skills remain disabled. Symbolic links and Windows junctions are allowed by default when their resolved targets stay inside the same workspace. Set `provider.allowSymbolicLinks` to `false` and restart to reject all symbolic links and junctions. Broken links, directory cycles, links outside the workspace, and hard-linked files remain blocked. Parent directories may contain Codex configuration or instructions; their presence does not block workspace validation. Use trusted projects and a dedicated runtime account. Do not put credentials in project files.
 
-The CLI expands `~`, literal `$HOME`, `${HOME}`, `%USERPROFILE%`, and `$env:USERPROFILE` at the start of its configuration filename. This also works when your shell does not expand them. For example, Command Prompt users can use `aiclitoaiapi setup "~/.aiclitoaiapi/aiclitoaiapi.json" ./aiclitoaiapi.example.json`. Paths inside the JSON template still need actual absolute paths; replace `YOUR_USER` and the example workspace paths before setup.
+The CLI expands `~`, literal `$HOME`, `${HOME}`, `%USERPROFILE%`, and `$env:USERPROFILE` at the start of its configuration filename. `setup CONFIG` generates a multi-provider configuration automatically, using the current directory as its initial workspace. Pass an optional template only when you need custom paths or workspace entries.
 
 PowerShell:
 
 ```powershell
-aiclitoaiapi setup "$HOME/.aiclitoaiapi/aiclitoaiapi.json" ./aiclitoaiapi.example.json
+aiclitoaiapi setup "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 aiclitoaiapi login "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 aiclitoaiapi doctor "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 aiclitoaiapi serve "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
@@ -78,7 +78,7 @@ aiclitoaiapi serve "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 Linux/macOS:
 
 ```sh
-aiclitoaiapi setup "$HOME/.aiclitoaiapi/aiclitoaiapi.json" ./aiclitoaiapi.example.json
+aiclitoaiapi setup "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 aiclitoaiapi login "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 aiclitoaiapi doctor "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 aiclitoaiapi serve "$HOME/.aiclitoaiapi/aiclitoaiapi.json"

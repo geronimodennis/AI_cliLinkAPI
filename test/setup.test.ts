@@ -36,6 +36,19 @@ test('setup creates a private key, never overwrites, rotation changes it', async
     assert.equal(Buffer.from(JSON.parse(await readFile(filename, 'utf8')).auth.apiKey, 'base64url').length, 32);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+test('setup without a template generates a multi-provider configuration', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-generated-setup-'));
+  try {
+    const filename = path.join(root, 'private', 'aiclitoaiapi.json');
+    await setup(filename);
+    const config = JSON.parse(await readFile(filename, 'utf8'));
+    assert.deepEqual(config.providers.map((provider: { id: string; type: string }) => ({ id: provider.id, type: provider.type })), [{ id: 'codex', type: 'codex' }, { id: 'antigravity', type: 'antigravity-cli' }]);
+    assert.equal(config.compatibility.defaultWorkspace, 'workspace');
+    assert.equal(config.workspaces.workspace.path, process.cwd());
+    assert.equal(config.workspaces.workspace.capabilities.fileWrite, true);
+    assert.equal(config.workspaces.workspace.capabilities.shell, false);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 test('permissions repair preserves existing configuration and rejects shared directories', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-acl-'));
   try {
