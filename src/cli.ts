@@ -5,7 +5,7 @@ import os from 'node:os';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { loadConfig, parseConfig, validatePaths, readJson } from './config.js';
+import { loadConfig, parseConfig, validatePaths, readJson, type Config } from './config.js';
 import { protect, verifyPrivate, verifyOwner, verifyConfigDirectory } from './permissions.js';
 import { createServer } from './server.js';
 import { createProvider } from './providers/registry.js';
@@ -51,6 +51,18 @@ const printProviders = (providers: { id: string; type: string; defaultModel: str
   console.log(line({ id: 'Provider ID', type: 'Type', model: 'Default model' }));
   console.log(`  ${'-'.repeat(widths.id)}  ${'-'.repeat(widths.type)}  ${'-'.repeat(widths.model)}`);
   for (const row of rows) console.log(line(row));
+  console.log();
+};
+const printSetupDetails = (config: Config, action: 'created' | 'repaired') => {
+  console.log(`\n  CONFIGURATION ${action === 'created' ? 'CREATED' : 'REPAIRED'}\n`);
+  console.log('  SERVER');
+  console.log(`  Host             ${config.server.host}`);
+  console.log(`  Port             ${config.server.port}`);
+  console.log(`  Timeout          ${config.server.timeoutMs}ms`);
+  console.log(`  Max concurrency  ${config.server.maxConcurrency}`);
+  console.log(`  Max body bytes   ${config.server.maxBodyBytes}`);
+  console.log('\n  GATEWAY API KEY (shown once; store it securely)');
+  console.log(`  ${config.auth.apiKey}`);
   console.log();
 };
 export function resolveConfigFilename(filename: string): string {
@@ -125,27 +137,33 @@ export async function secureConfig(filename: string): Promise<void> {
   }
   await verifyPrivate(directory);
 }
-export async function setup(filename: string, template?: string): Promise<void> {
+const needsApiKey = (input: Record<string, unknown>) => {
+  const auth = input.auth;
+  if (!auth || typeof auth !== 'object' || Array.isArray(auth)) return true;
+  const key = (auth as Record<string, unknown>).apiKey;
+  return typeof key !== 'string' || !key.trim();
+};
+export async function setup(filename: string, template?: string): Promise<{ config: Config; action: 'created' | 'repaired' }> {
   filename = resolveConfigFilename(filename);
-  const input = template ? await readJson(template) : generatedSetupConfig(filename);
+  const existing = await lstat(filename).then(info => info.isFile()).catch(() => false);
+  const input = existing ? await readJson(filename) : (template ? await readJson(template) : generatedSetupConfig(filename));
   if (!input || typeof input !== 'object') throw new Error('Invalid template.');
   const candidate = input as Record<string, unknown>;
+  if (existing && !needsApiKey(candidate)) throw new Error('Configuration already exists and has an API key. Use rotate-key to rotate it explicitly.');
   candidate.auth = { apiKey: randomBytes(32).toString('base64url') };
   const config = parseConfig(candidate);
   await privateDirectory(path.dirname(filename));
   await privateDirectory(config.provider.codexHome);
-  // Exclusive creation: setup never overwrites an existing key.
   const pending = filename + '.' + randomUUID() + '.tmp';
-  try {
-    // Reserve destination before writing secrets, then verify workspace boundaries.
-    await writeFile(filename, '', { flag: 'wx', mode: 0o600 });
-  } catch { throw new Error('Configuration already exists or cannot be created. Use rotate-key explicitly to rotate a key.'); }
+  if (existing) await verifyPrivate(filename);
+  else await writeFile(filename, '', { flag: 'wx', mode: 0o600 });
   try {
     await protect(filename);
     await validatePaths(config, filename);
     await writeFile(pending, JSON.stringify(publicConfig(config), null, 2) + '\n', { flag: 'wx', mode: 0o600 });
     await protect(pending); await rename(pending, filename);
-  } catch (error) { await unlink(pending).catch(() => undefined); await unlink(filename).catch(() => undefined); throw error; }
+    return { config, action: existing ? 'repaired' : 'created' };
+  } catch (error) { await unlink(pending).catch(() => undefined); if (!existing) await unlink(filename).catch(() => undefined); throw error; }
 }
 export async function rotate(filename: string): Promise<void> {
   filename = resolveConfigFilename(filename);
@@ -165,7 +183,7 @@ async function main() {
   if (command === 'help') { console.log(helpText()); return; }
   const filename = resolveConfigFilename(configArgument);
   if (command === 'secure-config') { await secureConfig(filename); console.log('Configuration permissions repaired. File contents and API key were not changed.'); return; }
-  if (command === 'setup') { await setup(filename, template); console.log(`Configuration created privately${template ? ' from the supplied template' : ' with the generated multi-provider template'}. Key was not printed.`); return; }
+  if (command === 'setup') { const result = await setup(filename, template); console.log(`Configuration ${result.action} privately${template ? ' from the supplied template' : ' with the generated multi-provider template'}.`); printSetupDetails(result.config, result.action); return; }
   if (command === 'rotate-key') { await rotate(filename); console.log('AIcliToAIapi key rotated. Restart the aiclitoaiapi and update clients. Key was not printed.'); return; }
   if (!['serve', 'login', 'agy-login', 'providers', 'models', 'doctor'].includes(command)) { console.log(helpText()); return; }
   await verifyConfigDirectory(path.dirname(filename)); await verifyPrivate(filename);

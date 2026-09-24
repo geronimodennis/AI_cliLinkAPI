@@ -27,6 +27,12 @@ test('setup creates a private key, never overwrites, rotation changes it', async
     assert.equal(Buffer.from(first, 'base64url').length, 32);
     await assert.rejects(setup(filename, template), /already exists/);
     assert.equal(JSON.parse(await readFile(filename, 'utf8')).auth.apiKey, first);
+    const missingKeyConfig = JSON.parse(await readFile(filename, 'utf8'));
+    missingKeyConfig.auth = {};
+    await writeFile(filename, JSON.stringify(missingKeyConfig));
+    const repaired = await setup(filename);
+    assert.equal(repaired.action, 'repaired');
+    assert.equal(Buffer.from(JSON.parse(await readFile(filename, 'utf8')).auth.apiKey, 'base64url').length, 32);
     await rotate(filename); await verifyPrivate(filename);
     assert.notEqual(JSON.parse(await readFile(filename, 'utf8')).auth.apiKey, first);
     const invalidKeyConfig = JSON.parse(await readFile(filename, 'utf8'));

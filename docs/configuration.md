@@ -86,7 +86,7 @@ To start with custom paths or multiple workspaces, provide the optional template
 aiclitoaiapi setup "~/.aiclitoaiapi/aiclitoaiapi.json"
 ```
 
-Setup creates private configuration and Codex-home directories, generates a key, and checks workspace boundaries. It never overwrites an existing configuration. If you already have a configuration, edit it instead of running setup again. To use a custom template: `aiclitoaiapi setup CONFIG TEMPLATE_JSON_PATH`.
+Setup creates private configuration and Codex-home directories, generates a key, and checks workspace boundaries. It prints the server connection settings and generated gateway API key once so you can store it in your client secret store. If an existing private configuration has no API key, `setup` repairs it by generating and writing a new key while retaining the remaining valid settings. If a key already exists, use `rotate-key` to replace it explicitly. To use a custom template: `aiclitoaiapi setup CONFIG TEMPLATE_JSON_PATH`.
 
 The default configuration location is the runtime user's home directory plus `.aiclitoaiapi/aiclitoaiapi.json`, for example:
 
@@ -485,7 +485,7 @@ This second request performs a real model call and can consume account usage. Do
 
 | Command | Purpose |
 | --- | --- |
-| `setup CONFIG [TEMPLATE]` | Create a new private configuration and generated key; without a template, generate the initial multi-provider configuration from the current directory; refuses overwrite |
+| `setup CONFIG [TEMPLATE]` | Create a new private configuration and generated key; without a template, generate the initial multi-provider configuration from the current directory; repairs an existing configuration only when its API key is missing |
 | `secure-config CONFIG` | Repair permissions without rotating the key or changing configuration content |
 | `login CONFIG [--device-auth]` | Sign the dedicated runtime into ChatGPT |
 | `doctor CONFIG` | Report platform mode and query the authenticated model catalog |
@@ -540,6 +540,8 @@ The configuration directory must be dedicated and contain only the config file a
 | `504` | Review timeout, runtime availability, and workload. A cancelled request can already have performed actions; do not blindly retry. |
 | Dedicated Codex home rejection | Relocate the specific custom entry identified by the error, or configure a clean dedicated home and log in there. Keep credentials private. |
 | Invalid configuration / permissions error | Check JSON syntax, exact field names, value ranges, absolute paths, existing folders, and owner/private permissions. Use `secure-config` only for its supported dedicated layout. |
+
+For every failed HTTP request, the serving terminal prints a redacted normalized stack trace with the request ID and error code. It deliberately excludes request bodies, raw upstream stderr, and the gateway API key; use the request ID to correlate the trace with the compact request log row.
 
 For diagnosis, share the error code, status, relevant setting names, and sanitized terminal output. Do not share the full credential file. Normal request logs include request IDs, status, duration, and error codes rather than prompts or keys.
 

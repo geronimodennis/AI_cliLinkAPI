@@ -25,4 +25,7 @@ export function terminalRequestLog(entry: Record<string, unknown>): void {
   }
   const line = formatRequestLog(entry);
   if (line) console.log(line);
+  if (entry.event === 'request_error' && entry.trace) {
+    console.error(`  ERROR TRACE id=${clean(entry.request_id)} code=${clean(entry.code)}\n${String(entry.trace)}`);
+  }
 }

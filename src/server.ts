@@ -12,6 +12,13 @@ import { Redactor } from './redaction.js';
 import { requestEndpoint, terminalRequestLog } from './logging.js';
 
 const json = (response: ServerResponse, status: number, body: unknown) => { response.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); response.end(JSON.stringify(body)); };
+const errorTrace = (error: AIcliToAIapiError, config: Config) => {
+  let trace = error.stack ?? error.message;
+  for (const secret of [config.auth.apiKey, config.provider.codexHome, os.homedir(), ...Object.values(config.workspaces).map(workspace => workspace.path)]) {
+    if (secret) trace = trace.replaceAll(secret, '<redacted>');
+  }
+  return trace.slice(0, 4000);
+};
 async function sse(response: ServerResponse, body: unknown, signal: AbortSignal) {
   signal.throwIfAborted();
   if (!response.write(`data: ${typeof body === 'string' ? body : JSON.stringify(body)}\n\n`)) await once(response, 'drain', { signal });
@@ -101,7 +108,7 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
         if (streaming) { await sse(response, errorBody(safe), AbortSignal.timeout(1000)).catch(() => undefined); response.end(); }
         else { if (safe.status === 401) response.setHeader('www-authenticate', 'Bearer'); json(response, safe.status, errorBody(safe)); }
       }
-      record({ event: 'request_error', code: failureCode, status: failureStatus });
+      record({ event: 'request_error', code: failureCode, status: failureStatus, trace: errorTrace(safe, config) });
     } finally {
       clearTimeout(timer); release?.(); controllers.delete(controller); response.off('close', disconnect); request.off('aborted', disconnect);
       record({ event: 'request_finished', duration_ms: Date.now() - started, status: failureStatus ?? response.statusCode, ...(response.headersSent ? { http_status: response.statusCode } : {}), stream: requestedStream, ...(failureCode ? { code: failureCode } : {}) });
