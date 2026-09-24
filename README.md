@@ -69,7 +69,7 @@ The CLI expands `~`, literal `$HOME`, `${HOME}`, `%USERPROFILE%`, and `$env:USER
 PowerShell:
 
 ```powershell
-aiclitoaiapi setup "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
+aiclitoaiapi setup
 aiclitoaiapi login "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 aiclitoaiapi doctor "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 aiclitoaiapi serve "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
@@ -78,7 +78,7 @@ aiclitoaiapi serve "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 Linux/macOS:
 
 ```sh
-aiclitoaiapi setup "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
+aiclitoaiapi setup
 aiclitoaiapi login "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 aiclitoaiapi doctor "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 aiclitoaiapi serve "$HOME/.aiclitoaiapi/aiclitoaiapi.json"

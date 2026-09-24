@@ -76,14 +76,16 @@ New-Item -ItemType Directory -Force -Path C:/Projects/project-a
 New-Item -ItemType Directory -Force -Path C:/Documents/reference
 ```
 
-`setup` can generate the initial configuration without a template. It uses the current directory as a `workspace` read-write workspace, creates a Codex home alongside the configuration file, includes the installed-platform Antigravity CLI path, and generates the gateway key. Edit the generated configuration before serving if the workspace or paths differ.
+Run `aiclitoaiapi setup` with no arguments for the interactive setup wizard. It defaults the configuration path to `~/.aiclitoaiapi/aiclitoaiapi.json`, then asks whether to configure Codex login, Antigravity login, both, or neither. It next asks whether to use the current directory, enter an absolute workspace path, or continue without selecting a default workspace. A workspace entry is still retained for configuration validity; choosing the last option only omits `compatibility.defaultWorkspace`.
+
+Outside an interactive terminal, `setup` can generate the initial configuration without a template. It uses the current directory as a `workspace` read-write workspace, creates a Codex home alongside the configuration file, includes the installed-platform Antigravity CLI path, and generates the gateway key. Edit the generated configuration before serving if the workspace or paths differ.
 
 To start with custom paths or multiple workspaces, provide the optional template argument. Copy `aiclitoaiapi.example.json`, edit its paths, then pass it as the second setup argument.
 
 ### 3. Create the private configuration
 
 ```powershell
-aiclitoaiapi setup "~/.aiclitoaiapi/aiclitoaiapi.json"
+aiclitoaiapi setup
 ```
 
 Setup creates private configuration and Codex-home directories, generates a key, and checks workspace boundaries. It prints the server connection settings and generated gateway API key once so you can store it in your client secret store. If an existing private configuration has no API key, `setup` repairs it by generating and writing a new key while retaining the remaining valid settings. If a key already exists, use `rotate-key` to replace it explicitly. To use a custom template: `aiclitoaiapi setup CONFIG TEMPLATE_JSON_PATH`.
@@ -485,7 +487,7 @@ This second request performs a real model call and can consume account usage. Do
 
 | Command | Purpose |
 | --- | --- |
-| `setup CONFIG [TEMPLATE]` | Create a new private configuration and generated key; without a template, generate the initial multi-provider configuration from the current directory; repairs an existing configuration only when its API key is missing |
+| `setup [CONFIG] [TEMPLATE]` | With no arguments in an interactive terminal, start the provider-login/workspace wizard using the default home configuration path. Otherwise create a configuration from the supplied/default path and optional template; repairs an existing configuration only when its API key is missing. |
 | `secure-config CONFIG` | Repair permissions without rotating the key or changing configuration content |
 | `login CONFIG [--device-auth]` | Sign the dedicated runtime into ChatGPT |
 | `doctor CONFIG` | Report platform mode and query the authenticated model catalog |

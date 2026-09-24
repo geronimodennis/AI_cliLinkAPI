@@ -5,6 +5,7 @@ import os from 'node:os';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { createInterface } from 'node:readline/promises';
 import { loadConfig, parseConfig, validatePaths, readJson, type Config } from './config.js';
 import { protect, verifyPrivate, verifyOwner, verifyConfigDirectory } from './permissions.js';
 import { createServer } from './server.js';
@@ -21,7 +22,7 @@ const publicConfig = (config: Awaited<ReturnType<typeof loadConfig>> | ReturnTyp
 };
 const helpText = () => [
   'Commands:',
-  '  setup CONFIG [TEMPLATE]               Create a private configuration.',
+  '  setup [CONFIG] [TEMPLATE]             Create a private configuration or start the setup wizard.',
   '  secure-config CONFIG                  Repair configuration permissions.',
   '  rotate-key CONFIG                     Rotate the gateway API key.',
   '  login CONFIG [--device-auth]          Sign in to the Codex provider.',
@@ -72,7 +73,7 @@ export function resolveConfigFilename(filename: string): string {
   if (!path.isAbsolute(expanded)) throw new Error('Configuration filename must be absolute. Use "~/.aiclitoaiapi/aiclitoaiapi.json" or a full path such as "C:/Users/your-user/.aiclitoaiapi/aiclitoaiapi.json".');
   return path.normalize(expanded);
 }
-const generatedSetupConfig = (filename: string) => {
+const generatedSetupConfig = (filename: string, workspacePath = process.cwd(), defaultWorkspace = true) => {
   const configDirectory = path.dirname(filename);
   const agyPath = process.platform === 'win32'
     ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'agy', 'bin', 'agy.exe')
@@ -80,14 +81,52 @@ const generatedSetupConfig = (filename: string) => {
   return {
     server: { host: '127.0.0.1', port: 3000, timeoutMs: 180000, maxConcurrency: 2, maxBodyBytes: 262144 },
     auth: { apiKey: 'REPLACE_WITH_A_SECURE_RANDOM_KEY' },
-    compatibility: { defaultWorkspace: 'workspace', toolTimeoutMs: 300000, maxPendingTools: 8 },
+    compatibility: { ...(defaultWorkspace ? { defaultWorkspace: 'workspace' } : {}), toolTimeoutMs: 300000, maxPendingTools: 8 },
     providers: [
       { id: 'codex', type: 'codex', authentication: 'chatgpt', codexHome: path.join(configDirectory, 'codex'), allowedModels: [], allowUnqualifiedWindowsExecution: true, allowProjectSkills: true, allowSymbolicLinks: true },
       { id: 'antigravity', type: 'antigravity-cli', agyPath, allowedModels: [], modelAliases: {}, allowUnqualifiedExecution: true }
     ],
-    workspaces: { workspace: { path: process.cwd(), access: 'read-write', capabilities: { fileRead: true, fileWrite: true, shell: false, sandbox: true } } }
+    workspaces: { workspace: { path: workspacePath, access: 'read-write', capabilities: { fileRead: true, fileWrite: true, shell: false, sandbox: true } } }
   };
 };
+type SetupChoices = { login: 'codex' | 'antigravity' | 'both' | 'later'; workspacePath: string; defaultWorkspace: boolean };
+async function interactiveSetup(): Promise<SetupChoices> {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    console.log('\n  AIcliToAIapi setup\n');
+    console.log('  Step 1: provider login');
+    console.log('  1) Configure ChatGPT / Codex login');
+    console.log('  2) Configure Antigravity login');
+    console.log('  3) Configure both logins');
+    console.log('  4) Skip login for now');
+    let login: SetupChoices['login'] = 'later';
+    while (true) {
+      const answer = (await prompt.question('  Select [4]: ')).trim() || '4';
+      if (answer === '1') { login = 'codex'; break; }
+      if (answer === '2') { login = 'antigravity'; break; }
+      if (answer === '3') { login = 'both'; break; }
+      if (answer === '4') break;
+      console.log('  Enter 1, 2, 3, or 4.');
+    }
+    console.log('\n  Step 2: default workspace');
+    console.log(`  1) Use current directory: ${process.cwd()}`);
+    console.log('  2) Enter an absolute workspace path');
+    console.log('  3) Do not set a default workspace');
+    let workspacePath = process.cwd(); let defaultWorkspace = true;
+    while (true) {
+      const answer = (await prompt.question('  Select [1]: ')).trim() || '1';
+      if (answer === '1') break;
+      if (answer === '2') {
+        const entered = (await prompt.question('  Workspace path: ')).trim();
+        if (!path.isAbsolute(entered)) { console.log('  Enter an absolute path.'); continue; }
+        workspacePath = path.normalize(entered); break;
+      }
+      if (answer === '3') { defaultWorkspace = false; break; }
+      console.log('  Enter 1, 2, or 3.');
+    }
+    return { login, workspacePath, defaultWorkspace };
+  } finally { prompt.close(); }
+}
 async function privateDirectory(directory: string) {
   const created = await mkdir(directory, { recursive: true, mode: 0o700 });
   if (created) await protect(directory, true);
@@ -143,10 +182,10 @@ const needsApiKey = (input: Record<string, unknown>) => {
   const key = (auth as Record<string, unknown>).apiKey;
   return typeof key !== 'string' || !key.trim();
 };
-export async function setup(filename: string, template?: string): Promise<{ config: Config; action: 'created' | 'repaired' }> {
+export async function setup(filename: string, template?: string, choices?: Pick<SetupChoices, 'workspacePath' | 'defaultWorkspace'>): Promise<{ config: Config; action: 'created' | 'repaired' }> {
   filename = resolveConfigFilename(filename);
   const existing = await lstat(filename).then(info => info.isFile()).catch(() => false);
-  const input = existing ? await readJson(filename) : (template ? await readJson(template) : generatedSetupConfig(filename));
+  const input = existing ? await readJson(filename) : (template ? await readJson(template) : generatedSetupConfig(filename, choices?.workspacePath, choices?.defaultWorkspace));
   if (!input || typeof input !== 'object') throw new Error('Invalid template.');
   const candidate = input as Record<string, unknown>;
   if (existing && !needsApiKey(candidate)) throw new Error('Configuration already exists and has an API key. Use rotate-key to rotate it explicitly.');
@@ -179,11 +218,28 @@ export async function rotate(filename: string): Promise<void> {
   finally { await unlink(temp).catch(() => undefined); }
 }
 async function main() {
-  const [command = 'help', configArgument = defaultConfig(), template] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  const [command = 'help', configArgument = defaultConfig(), template] = argv;
   if (command === 'help') { console.log(helpText()); return; }
   const filename = resolveConfigFilename(configArgument);
   if (command === 'secure-config') { await secureConfig(filename); console.log('Configuration permissions repaired. File contents and API key were not changed.'); return; }
-  if (command === 'setup') { const result = await setup(filename, template); console.log(`Configuration ${result.action} privately${template ? ' from the supplied template' : ' with the generated multi-provider template'}.`); printSetupDetails(result.config, result.action); return; }
+  if (command === 'setup') {
+    const choices = argv.length === 1 && process.stdin.isTTY && process.stdout.isTTY ? await interactiveSetup() : undefined;
+    const result = await setup(filename, template, choices);
+    console.log(`Configuration ${result.action} privately${template ? ' from the supplied template' : ' with the generated multi-provider template'}.`);
+    printSetupDetails(result.config, result.action);
+    if (choices?.login === 'codex' || choices?.login === 'both') {
+      const child = spawn(codexBinary(), ['-c', 'forced_login_method="chatgpt"', 'login'], { env: runtimeEnv(result.config.provider.codexHome), cwd: result.config.provider.codexHome, stdio: 'inherit', windowsHide: true });
+      await new Promise<void>((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('Official Codex login did not complete.'))); });
+    }
+    if (choices?.login === 'antigravity' || choices?.login === 'both') {
+      const provider = result.config.providers.find(item => item.id === 'antigravity');
+      if (!provider) throw new Error('Generated Antigravity provider is missing.');
+      const child = spawn(provider.agyPath, [], { cwd: os.homedir(), stdio: 'inherit', windowsHide: false });
+      await new Promise<void>((resolve, reject) => { child.once('error', () => reject(new Error('Could not start Antigravity CLI. Check provider.agyPath.'))); child.once('exit', code => code === 0 ? resolve() : reject(new Error('Antigravity CLI login did not complete.'))); });
+    }
+    return;
+  }
   if (command === 'rotate-key') { await rotate(filename); console.log('AIcliToAIapi key rotated. Restart the aiclitoaiapi and update clients. Key was not printed.'); return; }
   if (!['serve', 'login', 'agy-login', 'providers', 'models', 'doctor'].includes(command)) { console.log(helpText()); return; }
   await verifyConfigDirectory(path.dirname(filename)); await verifyPrivate(filename);
