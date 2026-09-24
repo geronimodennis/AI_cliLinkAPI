@@ -429,7 +429,20 @@ The application currently exposes exactly these routes:
 
 There is no unauthenticated health route, root-page UI, Responses API, or embeddings endpoint. Use the exact route paths without query strings or trailing slashes.
 
-For a local test under the runtime account, this PowerShell example reads the key without printing it:
+## Runnable API commands
+
+The gateway exposes exactly these authenticated HTTP endpoints:
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/models` | List models discovered from every healthy provider. |
+| `POST` | `/v1/chat/completions` | Create one text chat completion; use a model ID returned by `/v1/models`. |
+
+Start `aiclitoaiapi serve` first. The commands below read the local private configuration only to obtain the gateway key; do not run them on an untrusted computer or paste their output into public logs.
+
+### Windows PowerShell
+
+This GET command lists available models and stores the first returned model ID for the POST command:
 
 ```powershell
 $configFile = Join-Path $HOME '.aiclitoaiapi/aiclitoaiapi.json'
@@ -440,11 +453,11 @@ $catalog = Invoke-RestMethod -Uri "$gatewayBase/models" -Headers $requestHeaders
 $catalog.data | Select-Object id, reasoning_efforts
 ```
 
-Then send a minimal generation request. Select an existing workspace ID if you changed the template:
+This POST command sends a safe text-only request. The setup wizard creates the `workspace` ID; change it only if your configuration uses a different workspace ID:
 
 ```powershell
 if (-not $catalog.data.Count) { throw 'No available models; check allowedModels and login.' }
-$requestHeaders['X-Workspace-ID'] = 'project-a'
+$requestHeaders['X-Workspace-ID'] = 'workspace'
 $payload = @{
   model = $catalog.data[0].id
   stream = $false
@@ -459,23 +472,32 @@ For Antigravity, set the model explicitly to one shown by `aiclitoaiapi models C
 ```powershell
 $configFile = "$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 $config = Get-Content -LiteralPath $configFile -Raw | ConvertFrom-Json
-$headers = @{ Authorization = "Bearer $($config.auth.apiKey)"; 'X-Workspace-ID' = 'project-a' }
+$headers = @{ Authorization = "Bearer $($config.auth.apiKey)"; 'X-Workspace-ID' = 'workspace' }
 $body = @{ model = 'gemini-3.8-flash-high'; messages = @(@{ role = 'user'; content = 'Reply with exactly: Antigravity is connected.' }) } | ConvertTo-Json -Depth 6
 Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:3000/v1/chat/completions' -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 190
 ```
 
-### macOS Terminal and Linux shell quick test
+### macOS Terminal and Linux shell
 
-Start the gateway in one terminal, then run this in another terminal. This works in both macOS Terminal and a Linux POSIX shell; replace `project-a` and the model ID if your configuration differs.
+Start the gateway in one terminal, then run this in another terminal. This works in both macOS Terminal and a Linux POSIX shell. The GET command prints the model catalog and saves the first available ID for the POST command.
 
 ```sh
 CONFIG="$HOME/.aiclitoaiapi/aiclitoaiapi.json"
 API_KEY="$(node -e 'const fs=require("fs"); console.log(JSON.parse(fs.readFileSync(process.argv[1], "utf8")).auth.apiKey)' "$CONFIG")"
-curl --fail-with-body --request POST 'http://127.0.0.1:3000/v1/chat/completions' \
+BASE_URL='http://127.0.0.1:3000/v1'
+WORKSPACE_ID='workspace'
+
+# GET /v1/models
+CATALOG="$(curl --fail-with-body --request GET "$BASE_URL/models" --header "Authorization: Bearer $API_KEY")"
+printf '%s\n' "$CATALOG"
+MODEL="$(printf '%s' "$CATALOG" | node -e 'let text=""; process.stdin.on("data", chunk => text += chunk).on("end", () => { const catalog=JSON.parse(text); if (!catalog.data?.length) throw new Error("No models returned"); console.log(catalog.data[0].id); })')"
+
+# POST /v1/chat/completions
+curl --fail-with-body --request POST "$BASE_URL/chat/completions" \
   --header "Authorization: Bearer $API_KEY" \
   --header 'Content-Type: application/json' \
-  --header 'X-Workspace-ID: project-a' \
-  --data '{"model":"gemini-3.8-flash-high","messages":[{"role":"user","content":"Reply with exactly: Antigravity is connected."}]}'
+  --header "X-Workspace-ID: $WORKSPACE_ID" \
+  --data "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with a short greeting. Do not read files or run commands.\"}]}"
 unset API_KEY
 ```
 
