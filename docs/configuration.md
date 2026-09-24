@@ -93,7 +93,7 @@ Setup creates private configuration and Codex-home directories, generates a key,
 The default configuration location is the runtime user's home directory plus `.aiclitoaiapi/aiclitoaiapi.json`, for example:
 
 ```text
-C:/Users/geron/.aiclitoaiapi/aiclitoaiapi.json
+C:/Users/YOUR_USER/.aiclitoaiapi/aiclitoaiapi.json
 ```
 
 Run setup, login, and serve under the same OS account. Configuration permissions are checked at startup.
