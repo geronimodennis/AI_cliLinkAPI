@@ -1,5 +1,5 @@
 {
-  "server": { "host": "127.0.0.1", "port": 3000, "timeoutMs": 180000, "maxConcurrency": 2, "maxBodyBytes": 262144 },
+  "server": { "host": "127.0.0.1", "port": 3000, "timeoutMs": 180000, "maxConcurrency": 2, "maxBodyBytes": 262144, "showSecrets": false },
   "auth": { "apiKey": "REPLACE_WITH_A_SECURE_RANDOM_KEY" },
   "compatibility": { "defaultWorkspace": "project-a", "toolTimeoutMs": 300000, "maxPendingTools": 8 },
   "providers": [

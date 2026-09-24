@@ -64,7 +64,7 @@ const printSetupDetails = (config: Config, action: 'created' | 'repaired') => {
   console.log(`  Max concurrency  ${config.server.maxConcurrency}`);
   console.log(`  Max body bytes   ${config.server.maxBodyBytes}`);
   console.log('\n  GATEWAY API KEY (shown once; store it securely)');
-  console.log(`  ${config.auth.apiKey}`);
+  console.log(`  ${config.server.showSecrets ? config.auth.apiKey : 'configured (redacted)'}`);
   console.log();
 };
 const printConfiguration = (config: Config, filename: string) => {
@@ -77,7 +77,7 @@ const printConfiguration = (config: Config, filename: string) => {
   console.log(`  Max concurrency  ${config.server.maxConcurrency}`);
   console.log(`  Max body bytes   ${config.server.maxBodyBytes}`);
   console.log('\n  AUTHENTICATION');
-  console.log(`  Gateway API key  ${config.auth.apiKey}`);
+  console.log(`  Gateway API key  ${config.server.showSecrets ? config.auth.apiKey : 'configured (redacted)'}`);
   console.log(`\n  DEFAULT WORKSPACE  ${config.compatibility.defaultWorkspace ?? '—'}`);
   printProviders([{ id: 'codex', type: 'codex', defaultModel: config.provider.defaultModel }, ...config.providers.map(provider => ({ id: provider.id, type: provider.type, defaultModel: provider.defaultModel }))]);
   console.log('  WORKSPACES\n');
@@ -102,7 +102,7 @@ const generatedSetupConfig = (filename: string, workspacePath = process.cwd(), d
     ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'agy', 'bin', 'agy.exe')
     : 'agy';
   return {
-    server: { host: '127.0.0.1', port: 3000, timeoutMs: 180000, maxConcurrency: 2, maxBodyBytes: 262144 },
+    server: { host: '127.0.0.1', port: 3000, timeoutMs: 180000, maxConcurrency: 2, maxBodyBytes: 262144, showSecrets: false },
     auth: { apiKey: 'REPLACE_WITH_A_SECURE_RANDOM_KEY' },
     compatibility: { ...(defaultWorkspace ? { defaultWorkspace: 'workspace' } : {}), toolTimeoutMs: 300000, maxPendingTools: 8 },
     providers: [
