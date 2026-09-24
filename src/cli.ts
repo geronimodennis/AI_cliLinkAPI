@@ -28,6 +28,7 @@ const helpText = () => [
   '  login CONFIG [--device-auth]          Sign in to the Codex provider.',
   '  agy-login CONFIG PROVIDER_ID          Sign in to an Antigravity CLI provider.',
   '  providers CONFIG                      List configured provider IDs.',
+  '  config CONFIG                         Show the active configuration (API key redacted).',
   '  models CONFIG [PROVIDER_ID]           List models grouped by provider, or one provider.',
   '  doctor CONFIG                         Check configured providers and models.',
   '  serve CONFIG                          Start the HTTP API.',
@@ -64,6 +65,28 @@ const printSetupDetails = (config: Config, action: 'created' | 'repaired') => {
   console.log(`  Max body bytes   ${config.server.maxBodyBytes}`);
   console.log('\n  GATEWAY API KEY (shown once; store it securely)');
   console.log(`  ${config.auth.apiKey}`);
+  console.log();
+};
+const printConfiguration = (config: Config, filename: string) => {
+  console.log('\n  ACTIVE CONFIGURATION\n');
+  console.log(`  Configuration file  ${filename}`);
+  console.log('\n  SERVER');
+  console.log(`  Host             ${config.server.host}`);
+  console.log(`  Port             ${config.server.port}`);
+  console.log(`  Timeout          ${config.server.timeoutMs}ms`);
+  console.log(`  Max concurrency  ${config.server.maxConcurrency}`);
+  console.log(`  Max body bytes   ${config.server.maxBodyBytes}`);
+  console.log('\n  AUTHENTICATION');
+  console.log('  Gateway API key  configured (redacted)');
+  console.log(`\n  DEFAULT WORKSPACE  ${config.compatibility.defaultWorkspace ?? '—'}`);
+  printProviders([{ id: 'codex', type: 'codex', defaultModel: config.provider.defaultModel }, ...config.providers.map(provider => ({ id: provider.id, type: provider.type, defaultModel: provider.defaultModel }))]);
+  console.log('  WORKSPACES\n');
+  const rows = Object.entries(config.workspaces).map(([id, workspace]) => ({ id, path: workspace.path, access: workspace.access, tools: workspace.capabilities ? `read=${workspace.capabilities.fileRead}, write=${workspace.capabilities.fileWrite}, shell=${workspace.capabilities.shell}, sandbox=${workspace.capabilities.sandbox}` : 'default' }));
+  const widths = { id: Math.max(12, ...rows.map(row => row.id.length)), path: Math.max(4, ...rows.map(row => row.path.length)), access: Math.max(6, ...rows.map(row => row.access.length)) };
+  const line = (row: { id: string; path: string; access: string; tools: string }) => `  ${row.id.padEnd(widths.id)}  ${row.path.padEnd(widths.path)}  ${row.access.padEnd(widths.access)}  ${row.tools}`;
+  console.log(line({ id: 'Workspace ID', path: 'Path', access: 'Access', tools: 'Capabilities' }));
+  console.log(`  ${'-'.repeat(widths.id)}  ${'-'.repeat(widths.path)}  ${'-'.repeat(widths.access)}  ${'-'.repeat(12)}`);
+  for (const row of rows) console.log(line(row));
   console.log();
 };
 export function resolveConfigFilename(filename: string): string {
@@ -241,12 +264,17 @@ async function main() {
     return;
   }
   if (command === 'rotate-key') { await rotate(filename); console.log('AIcliToAIapi key rotated. Restart the aiclitoaiapi and update clients. Key was not printed.'); return; }
-  if (!['serve', 'login', 'agy-login', 'providers', 'models', 'doctor'].includes(command)) { console.log(helpText()); return; }
+  if (!['serve', 'login', 'agy-login', 'providers', 'config', 'models', 'doctor'].includes(command)) { console.log(helpText()); return; }
   await verifyConfigDirectory(path.dirname(filename)); await verifyPrivate(filename);
   const config = await loadConfig(filename);
   if (command === 'providers') {
     if (template) throw new Error('Usage: aiclitoaiapi providers ABSOLUTE_CONFIG_PATH');
     printProviders([{ id: 'codex', type: 'codex', defaultModel: config.provider.defaultModel }, ...config.providers.map(provider => ({ id: provider.id, type: provider.type, defaultModel: provider.defaultModel }))]);
+    return;
+  }
+  if (command === 'config') {
+    if (template) throw new Error('Usage: aiclitoaiapi config [ABSOLUTE_CONFIG_PATH]');
+    printConfiguration(config, filename);
     return;
   }
   if (command === 'agy-login') {
