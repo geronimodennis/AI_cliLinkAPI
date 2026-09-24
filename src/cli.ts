@@ -77,7 +77,7 @@ const printConfiguration = (config: Config, filename: string) => {
   console.log(`  Max concurrency  ${config.server.maxConcurrency}`);
   console.log(`  Max body bytes   ${config.server.maxBodyBytes}`);
   console.log('\n  AUTHENTICATION');
-  console.log('  Gateway API key  configured (redacted)');
+  console.log(`  Gateway API key  ${config.auth.apiKey}`);
   console.log(`\n  DEFAULT WORKSPACE  ${config.compatibility.defaultWorkspace ?? '—'}`);
   printProviders([{ id: 'codex', type: 'codex', defaultModel: config.provider.defaultModel }, ...config.providers.map(provider => ({ id: provider.id, type: provider.type, defaultModel: provider.defaultModel }))]);
   console.log('  WORKSPACES\n');
@@ -320,7 +320,7 @@ async function main() {
   const app = createServer(config, provider);
   await new Promise<void>((resolve, reject) => { app.server.once('error', reject); app.server.listen(config.server.port, config.server.host, resolve); });
   const address = app.server.address();
-  if (address && typeof address !== 'string') console.log(startupMessage(config, address));
+  if (address && typeof address !== 'string') console.log(startupMessage(config, address, filename));
   let closing = false;
   const close = () => { if (!closing) { closing = true; void app.close(); } };
   process.once('SIGINT', close); process.once('SIGTERM', close);

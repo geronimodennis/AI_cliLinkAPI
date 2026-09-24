@@ -488,7 +488,7 @@ This second request performs a real model call and can consume account usage. Do
 | Command | Purpose |
 | --- | --- |
 | `setup [CONFIG] [TEMPLATE]` | With no arguments in an interactive terminal, start the provider-login/workspace wizard using the default home configuration path. Otherwise create a configuration from the supplied/default path and optional template; repairs an existing configuration only when its API key is missing. |
-| `config [CONFIG]` | Display server, provider, compatibility, and workspace settings in a readable terminal view. The API key is always redacted. |
+| `config [CONFIG]` | Display server, provider, compatibility, workspace settings, and the gateway API key in a readable terminal view. Run only in a private terminal. |
 | `secure-config CONFIG` | Repair permissions without rotating the key or changing configuration content |
 | `login CONFIG [--device-auth]` | Sign the dedicated runtime into ChatGPT |
 | `doctor CONFIG` | Report platform mode and query the authenticated model catalog |

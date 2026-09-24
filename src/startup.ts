@@ -2,7 +2,7 @@ import os from 'node:os';
 import type { AddressInfo } from 'node:net';
 import type { Config } from './config.js';
 
-export function startupMessage(config: Config, address: AddressInfo): string {
+export function startupMessage(config: Config, address: AddressInfo, configFilename: string): string {
   const host = address.address;
   const urlHost = host === '0.0.0.0' ? '127.0.0.1' : host === '::' ? '::1' : host;
   const baseUrl = `http://${urlHost.includes(':') ? `[${urlHost}]` : urlHost}:${address.port}`;
@@ -22,6 +22,7 @@ export function startupMessage(config: Config, address: AddressInfo): string {
     row('Process ID', process.pid),
     row('Base URL', baseUrl),
     row('API base URL', `${baseUrl}/v1`),
+    row('Configuration', configFilename),
     ...(host === '0.0.0.0' || host === '::' ? [row('Bind scope', 'All interfaces (URLs above use loopback)')] : []),
     '',
     '  ENDPOINTS',
