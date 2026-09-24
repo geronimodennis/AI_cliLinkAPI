@@ -1,16 +1,17 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { mkdir, writeFile, rename, unlink, realpath, readdir, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 import { loadConfig, parseConfig, validatePaths, readJson, type Config } from './config.js';
 import { protect, verifyPrivate, verifyOwner, verifyConfigDirectory } from './permissions.js';
 import { createServer } from './server.js';
 import { createProvider } from './providers/registry.js';
-import { codexBinary, runtimeEnv, verifyRuntime } from './providers/runtime.js';
+import { codexBinary, runtimeEnv, verifyRuntime, RUNTIME_VERSION } from './providers/runtime.js';
 import { requireNativePlatform } from './sandbox.js';
 import { normalizeError } from './errors.js';
 import { startupMessage } from './startup.js';
@@ -20,6 +21,19 @@ const publicConfig = (config: Awaited<ReturnType<typeof loadConfig>> | ReturnTyp
   const { provider, providers, ...rest } = config;
   return { ...rest, providers: [{ id: 'codex', ...provider }, ...providers] };
 };
+export function versionInfo(): { name: string; version: string; runtime: string; node: string } {
+  // Resolved from this module rather than cwd: both src/cli.ts (dev, tsx)
+  // and dist/src/cli.js (npm build / global install) sit two and one levels
+  // above the package.json at the package root.
+  const dir = path.dirname(fileURLToPath(import.meta.url));
+  for (const candidate of [path.join(dir, '..', '..', 'package.json'), path.join(dir, '..', 'package.json')]) {
+    try {
+      const pkg = JSON.parse(readFileSync(candidate, 'utf8')) as { name?: unknown; version?: unknown };
+      if (typeof pkg.name === 'string' && typeof pkg.version === 'string') return { name: pkg.name, version: pkg.version, runtime: RUNTIME_VERSION, node: process.version };
+    } catch { /* try the next candidate */ }
+  }
+  throw new Error('Could not locate package.json to report the aiclitoaiapi version.');
+}
 const helpText = () => [
   'Commands:',
   '  setup [CONFIG] [TEMPLATE]             Create a private configuration or start the setup wizard.',
@@ -32,6 +46,7 @@ const helpText = () => [
   '  models CONFIG [PROVIDER_ID]           List models grouped by provider, or one provider.',
   '  doctor CONFIG                         Check configured providers and models.',
   '  serve CONFIG                          Start the HTTP API.',
+  '  version                               Show the aiclitoaiapi, Codex runtime and Node versions.',
   '  help                                  Show this help.',
   `Default CONFIG: ${defaultConfig()}`,
 ].join('\n');
@@ -248,6 +263,17 @@ async function main() {
   const positional = command === 'config' ? commandArgs.filter(argument => !configFlags.has(argument)) : commandArgs;
   const [configArgument = defaultConfig(), template] = positional;
   if (command === 'help') { console.log(helpText()); return; }
+  if (command === 'version' || command === '--version' || command === '-v') {
+    const info = versionInfo();
+    const row = (label: string, value: string) => `  ${label.padEnd(16)} ${value}`;
+    console.log('\n  AICLITOAIAPI VERSION\n');
+    console.log(row('package', info.name));
+    console.log(row('version', info.version));
+    console.log(row('codex runtime', `codex-cli ${info.runtime} (pinned)`));
+    console.log(row('node', info.node));
+    console.log();
+    return;
+  }
   const filename = resolveConfigFilename(configArgument);
   if (command === 'secure-config') { await secureConfig(filename); console.log('Configuration permissions repaired. File contents and API key were not changed.'); return; }
   if (command === 'setup') {

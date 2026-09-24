@@ -1,18 +1,29 @@
 import os from 'node:os';
 import type { AddressInfo } from 'node:net';
 import type { Config } from './config.js';
+import { versionInfo } from './cli.js';
 
 export function startupMessage(config: Config, address: AddressInfo, configFilename: string): string {
   const host = address.address;
   const urlHost = host === '0.0.0.0' ? '127.0.0.1' : host === '::' ? '::1' : host;
   const baseUrl = `http://${urlHost.includes(':') ? `[${urlHost}]` : urlHost}:${address.port}`;
   const row = (label: string, value: string | number) => `  ${label.padEnd(16)} ${value}`;
+  let versionRows: string[];
+  try {
+    const info = versionInfo();
+    versionRows = [row('aiclitoaiapi', `v${info.version}`), row('codex runtime', `codex-cli ${info.runtime} (pinned)`), row('node', info.node)];
+  } catch {
+    versionRows = [row('version', 'package.json not found')];
+  }
   return [
     '',
     '  +----------------------------------------------------------+',
     '  |  AIcliToAIapi                                              |',
     '  |  Codex-powered OpenAI-compatible API                      |',
     '  +----------------------------------------------------------+',
+    '',
+    '  VERSION',
+    ...versionRows,
     '',
     '  SERVER INFORMATION',
     row('Status', 'LISTENING'),

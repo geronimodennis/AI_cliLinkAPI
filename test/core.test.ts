@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile, symlink, link, unlink, rm, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -12,6 +13,8 @@ import { ResponseExtractor } from '../src/providers/codex.js';
 import { Redactor } from '../src/redaction.js';
 import { profileArgs, requireNativePlatform } from '../src/sandbox.js';
 import { normalizeError } from '../src/errors.js';
+import { versionInfo } from '../src/cli.js';
+import { RUNTIME_VERSION } from '../src/providers/runtime.js';
 export const key = randomBytes(32).toString('base64url');
 export const fixtureConfig = () => parseConfig({ auth: { apiKey: key }, provider: { type: 'codex', authentication: 'chatgpt', codexHome: path.resolve('test-home') }, workspaces: { project: { path: path.resolve('test-project'), access: 'read-write' } } });
 test('authentication rejects absent, malformed, wrong-length and wrong keys', () => {
@@ -179,5 +182,13 @@ test('upstream errors normalized without disclosing credentials or paths', () =>
   assert.equal(normalizeError(new Error('rate limit ' + key)).status, 429);
   assert.equal(normalizeError(new Error('401 token expired ' + key)).code, 'upstream_authentication');
   assert.ok(!normalizeError(new Error(key)).message.includes(key));
+});
+test('version reports package name, version and pinned runtime version', async () => {
+  const pkg = JSON.parse(readFileSync(path.resolve('package.json'), 'utf8')) as { name: string; version: string };
+  const info = await versionInfo();
+  assert.equal(info.name, pkg.name);
+  assert.equal(info.version, pkg.version);
+  assert.equal(info.runtime, RUNTIME_VERSION);
+  assert.match(info.node, /^v\d+/);
 });
 
