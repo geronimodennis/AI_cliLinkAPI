@@ -15,6 +15,8 @@ import { codexBinary, runtimeEnv, verifyRuntime, RUNTIME_VERSION } from './provi
 import { requireNativePlatform } from './sandbox.js';
 import { normalizeError } from './errors.js';
 import { startupMessage } from './startup.js';
+import { terminalRequestLog } from './logging.js';
+import { remoteWorkerConfigSchema, runRemoteWorker } from './remote-worker.js';
 
 export const defaultConfig = () => path.join(os.homedir(), '.aiclitoaiapi', 'aiclitoaiapi.json');
 const publicConfig = (config: Awaited<ReturnType<typeof loadConfig>> | ReturnType<typeof parseConfig>) => {
@@ -45,18 +47,19 @@ const helpText = () => [
   '  config [CONFIG] [--show-secrets]       Show the active configuration.',
   '  models CONFIG [PROVIDER_ID]           List models grouped by provider, or one provider.',
   '  doctor CONFIG                         Check configured providers and models.',
-  '  serve CONFIG                          Start the HTTP API.',
+  '  serve [CONFIG] [--debug]              Start the HTTP API; optionally log redacted request payloads.',
+  '  agent connect [AGENT_CONFIG]          Run a persistent remote-workspace tool agent.',
   '  version                               Show the aiclitoaiapi, Codex runtime and Node versions.',
   '  help                                  Show this help.',
   `Default CONFIG: ${defaultConfig()}`,
 ].join('\n');
-const printModels = (groups: { id: string; models?: { id: string; nativeId?: string; efforts: string[]; defaultEffort: string; isDefault: boolean }[]; error?: string }[]) => {
-  const rows = groups.flatMap(group => group.error ? [{ provider: group.id, model: 'Unavailable', effort: '—', default: group.error }] : group.models!.map(model => ({ provider: group.id, model: model.id === (model.nativeId ?? model.id) ? model.id : `${model.id} → ${model.nativeId}`, effort: model.efforts.join(', '), default: model.isDefault ? 'yes' : '' })));
-  const widths = { provider: Math.max(8, ...rows.map(row => row.provider.length)), model: Math.max(5, ...rows.map(row => row.model.length)), effort: Math.max(16, ...rows.map(row => row.effort.length)), default: Math.max(7, ...rows.map(row => row.default.length)) };
+const printModels = (groups: { id: string; models?: { id: string; nativeId?: string; efforts: string[]; defaultEffort: string; isDefault: boolean; capabilities: { chat_completions: boolean; streaming: boolean; reasoning: boolean; external_tools: boolean } }[]; error?: string }[]) => {
+  const rows = groups.flatMap(group => group.error ? [{ provider: group.id, model: 'Unavailable', effort: '—', tools: '—', default: group.error }] : group.models!.map(model => ({ provider: group.id, model: model.id === (model.nativeId ?? model.id) ? model.id : `${model.id} → ${model.nativeId}`, effort: model.efforts.join(', '), tools: ['chat', model.capabilities.streaming && 'stream', model.capabilities.reasoning && 'reason', model.capabilities.external_tools && 'external-tools'].filter(Boolean).join(', '), default: model.isDefault ? 'yes' : '' })));
+  const widths = { provider: Math.max(8, ...rows.map(row => row.provider.length)), model: Math.max(5, ...rows.map(row => row.model.length)), effort: Math.max(16, ...rows.map(row => row.effort.length)), tools: Math.max(12, ...rows.map(row => row.tools.length)), default: Math.max(7, ...rows.map(row => row.default.length)) };
   const line = (row: typeof rows[number]) => `  ${row.provider.padEnd(widths.provider)}  ${row.model.padEnd(widths.model)}  ${row.effort.padEnd(widths.effort)}  ${row.default}`;
   console.log('\n  AVAILABLE MODELS\n');
-  console.log(line({ provider: 'Provider', model: 'Model', effort: 'Reasoning efforts', default: 'Default' }));
-  console.log(`  ${'-'.repeat(widths.provider)}  ${'-'.repeat(widths.model)}  ${'-'.repeat(widths.effort)}  ${'-'.repeat(widths.default)}`);
+  console.log(line({ provider: 'Provider', model: 'Model', effort: 'Reasoning efforts', tools: 'Capabilities', default: 'Default' }));
+  console.log(`  ${'-'.repeat(widths.provider)}  ${'-'.repeat(widths.model)}  ${'-'.repeat(widths.effort)}  ${'-'.repeat(widths.tools)}  ${'-'.repeat(widths.default)}`);
   if (rows.length) for (const row of rows) console.log(line(row)); else console.log('  No providers returned models.');
   console.log();
 };
@@ -95,6 +98,11 @@ const printConfiguration = (config: Config, filename: string, showSecrets = fals
   console.log(`  Gateway API key  ${showSecrets ? config.auth.apiKey : 'configured (redacted)'}`);
   console.log(`\n  DEFAULT WORKSPACE  ${config.compatibility.defaultWorkspace ?? '—'}`);
   printProviders([{ id: 'codex', type: 'codex', defaultModel: config.provider.defaultModel }, ...config.providers.map(provider => ({ id: provider.id, type: provider.type, defaultModel: provider.defaultModel }))]);
+  if (config.remoteAgents.length) {
+    console.log('  REMOTE AGENTS\n');
+    for (const agent of config.remoteAgents) console.log(`  ${agent.id.padEnd(24)} ${showSecrets ? agent.token : 'configured (redacted)'}`);
+    console.log();
+  }
   console.log('  WORKSPACES\n');
   const rows = Object.entries(config.workspaces).map(([id, workspace]) => ({ id, path: workspace.path, access: workspace.access, tools: workspace.capabilities ? `read=${workspace.capabilities.fileRead}, write=${workspace.capabilities.fileWrite}, shell=${workspace.capabilities.shell}, sandbox=${workspace.capabilities.sandbox}` : 'default' }));
   const widths = { id: Math.max(12, ...rows.map(row => row.id.length)), path: Math.max(4, ...rows.map(row => row.path.length)), access: Math.max(6, ...rows.map(row => row.access.length)) };
@@ -111,23 +119,24 @@ export function resolveConfigFilename(filename: string): string {
   if (!path.isAbsolute(expanded)) throw new Error('Configuration filename must be absolute. Use "~/.aiclitoaiapi/aiclitoaiapi.json" or a full path such as "C:/Users/your-user/.aiclitoaiapi/aiclitoaiapi.json".');
   return path.normalize(expanded);
 }
-const generatedSetupConfig = (filename: string, workspacePath = process.cwd(), defaultWorkspace = true) => {
+const generatedSetupConfig = (filename: string, workspacePath = process.cwd(), defaultWorkspace = true, host = '127.0.0.1') => {
   const configDirectory = path.dirname(filename);
   const agyPath = process.platform === 'win32'
     ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), 'AppData', 'Local'), 'agy', 'bin', 'agy.exe')
     : 'agy';
   return {
-    server: { host: '127.0.0.1', port: 3000, timeoutMs: 180000, maxConcurrency: 2, maxBodyBytes: 262144 },
+    server: { host, port: 3000, timeoutMs: 180000, maxConcurrency: 2, maxBodyBytes: 1048576 },
     auth: { apiKey: 'REPLACE_WITH_A_SECURE_RANDOM_KEY' },
     compatibility: { ...(defaultWorkspace ? { defaultWorkspace: 'workspace' } : {}), toolTimeoutMs: 300000, maxPendingTools: 8 },
     providers: [
       { id: 'codex', type: 'codex', authentication: 'chatgpt', codexHome: path.join(configDirectory, 'codex'), allowedModels: [], allowUnqualifiedWindowsExecution: true, allowProjectSkills: true, allowSymbolicLinks: true },
       { id: 'antigravity', type: 'antigravity-cli', agyPath, allowedModels: [], modelAliases: {}, allowUnqualifiedExecution: true }
     ],
-    workspaces: { workspace: { path: workspacePath, access: 'read-write', capabilities: { fileRead: true, fileWrite: true, shell: false, sandbox: true } } }
+    remoteAgents: [],
+    workspaces: { workspace: { path: workspacePath, access: 'read-write', capabilities: { fileRead: true, fileWrite: true, shell: true, sandbox: true } } }
   };
 };
-type SetupChoices = { login: 'codex' | 'antigravity' | 'both' | 'later'; workspacePath: string; defaultWorkspace: boolean };
+type SetupChoices = { login: 'codex' | 'antigravity' | 'both' | 'later'; workspacePath: string; defaultWorkspace: boolean; host: string };
 async function interactiveSetup(): Promise<SetupChoices> {
   const prompt = createInterface({ input: process.stdin, output: process.stdout });
   try {
@@ -162,7 +171,17 @@ async function interactiveSetup(): Promise<SetupChoices> {
       if (answer === '3') { defaultWorkspace = false; break; }
       console.log('  Enter 1, 2, or 3.');
     }
-    return { login, workspacePath, defaultWorkspace };
+    console.log('\n  Step 3: network access');
+    console.log('  1) This computer only (127.0.0.1)');
+    console.log('  2) Local network / all IPv4 interfaces (0.0.0.0)');
+    let host = '127.0.0.1';
+    while (true) {
+      const answer = (await prompt.question('  Select [1]: ')).trim() || '1';
+      if (answer === '1') break;
+      if (answer === '2') { host = '0.0.0.0'; break; }
+      console.log('  Enter 1 or 2.');
+    }
+    return { login, workspacePath, defaultWorkspace, host };
   } finally { prompt.close(); }
 }
 async function privateDirectory(directory: string) {
@@ -220,10 +239,10 @@ const needsApiKey = (input: Record<string, unknown>) => {
   const key = (auth as Record<string, unknown>).apiKey;
   return typeof key !== 'string' || !key.trim();
 };
-export async function setup(filename: string, template?: string, choices?: Pick<SetupChoices, 'workspacePath' | 'defaultWorkspace'>): Promise<{ config: Config; action: 'created' | 'repaired' }> {
+export async function setup(filename: string, template?: string, choices?: Pick<SetupChoices, 'workspacePath' | 'defaultWorkspace' | 'host'>): Promise<{ config: Config; action: 'created' | 'repaired' }> {
   filename = resolveConfigFilename(filename);
   const existing = await lstat(filename).then(info => info.isFile()).catch(() => false);
-  const input = existing ? await readJson(filename) : (template ? await readJson(template) : generatedSetupConfig(filename, choices?.workspacePath, choices?.defaultWorkspace));
+  const input = existing ? await readJson(filename) : (template ? await readJson(template) : generatedSetupConfig(filename, choices?.workspacePath, choices?.defaultWorkspace, choices?.host));
   if (!input || typeof input !== 'object') throw new Error('Invalid template.');
   const candidate = input as Record<string, unknown>;
   if (existing && !needsApiKey(candidate)) throw new Error('Configuration already exists and has an API key. Use rotate-key to rotate it explicitly.');
@@ -260,7 +279,9 @@ async function main() {
   const [command = 'help', ...commandArgs] = argv;
   const configFlags = new Set(['--show-secrets', '--show-secret', 'show-secrets', 'show-secret', 'show-secrete']);
   const showSecrets = command === 'config' && commandArgs.some(argument => configFlags.has(argument));
-  const positional = command === 'config' ? commandArgs.filter(argument => !configFlags.has(argument)) : commandArgs;
+  const debugFlags = new Set(['--debug', 'debug']);
+  const debugPayload = command === 'serve' && commandArgs.some(argument => debugFlags.has(argument));
+  const positional = command === 'config' ? commandArgs.filter(argument => !configFlags.has(argument)) : command === 'serve' ? commandArgs.filter(argument => !debugFlags.has(argument)) : commandArgs;
   const [configArgument = defaultConfig(), template] = positional;
   if (command === 'help') { console.log(helpText()); return; }
   if (command === 'version' || command === '--version' || command === '-v') {
@@ -272,6 +293,18 @@ async function main() {
     console.log(row('codex runtime', `codex-cli ${info.runtime} (pinned)`));
     console.log(row('node', info.node));
     console.log();
+    return;
+  }
+  if (command === 'agent') {
+    if (commandArgs[0] !== 'connect' || commandArgs.length > 2) throw new Error('Usage: aiclitoaiapi agent connect [ABSOLUTE_AGENT_CONFIG_PATH]');
+    const agentFilename = resolveConfigFilename(commandArgs[1] ?? path.join(os.homedir(), '.aiclitoaiapi', 'remote-agent.json'));
+    await verifyConfigDirectory(path.dirname(agentFilename)); await verifyPrivate(agentFilename);
+    const agentConfig = remoteWorkerConfigSchema.parse(await readJson(agentFilename));
+    agentConfig.workspace = await realpath(agentConfig.workspace);
+    const controller = new AbortController();
+    process.once('SIGINT', () => controller.abort()); process.once('SIGTERM', () => controller.abort());
+    console.log(`Remote agent ${agentConfig.agentId} connected for workspace ${agentConfig.workspaceId} at ${agentConfig.workspace}.`);
+    await runRemoteWorker(agentConfig, controller.signal).catch(error => { if (!controller.signal.aborted) throw error; });
     return;
   }
   const filename = resolveConfigFilename(configArgument);
@@ -347,7 +380,7 @@ async function main() {
     if (failed) process.exitCode = 1;
     return;
   }
-  const app = createServer(config, provider);
+  const app = createServer(config, provider, terminalRequestLog, debugPayload);
   await new Promise<void>((resolve, reject) => { app.server.once('error', reject); app.server.listen(config.server.port, config.server.host, resolve); });
   const address = app.server.address();
   if (address && typeof address !== 'string') console.log(startupMessage(config, address, filename));

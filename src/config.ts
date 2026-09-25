@@ -6,13 +6,14 @@ import { AIcliToAIapiError } from './errors.js';
 const codexProviderSchema = z.strictObject({ type: z.literal('codex'), authentication: z.literal('chatgpt'), allowUnqualifiedWindowsExecution: z.boolean().default(true), allowProjectSkills: z.boolean().default(true), allowSymbolicLinks: z.boolean().default(true), codexHome: z.string().min(1), allowedModels: z.array(z.string().regex(/^[a-zA-Z0-9._-]+$/)).default([]), defaultModel: z.string().optional(), defaultReasoning: z.string().optional() });
 const agyProviderSchema = z.strictObject({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), type: z.literal('antigravity-cli'), agyPath: z.string().min(1).default('agy'), allowedModels: z.array(z.string().regex(/^[a-zA-Z0-9._-]+$/)).default([]), modelAliases: z.record(z.string().regex(/^[a-zA-Z0-9._-]+$/), z.string().regex(/^[a-zA-Z0-9._-]+$/)).default({}), defaultModel: z.string().optional(), defaultReasoning: z.enum(['low', 'medium', 'high']).optional(), allowUnqualifiedExecution: z.boolean().default(true) });
 export const configSchema = z.strictObject({
-  server: z.strictObject({ host: z.string().min(1).default('127.0.0.1'), port: z.number().int().min(1).max(65535).default(3000), timeoutMs: z.number().int().min(1000).max(3600000).default(180000), maxConcurrency: z.number().int().min(1).max(16).default(2), maxBodyBytes: z.number().int().min(1024).max(1048576).default(262144) }).default({ host: '127.0.0.1', port: 3000, timeoutMs: 180000, maxConcurrency: 2, maxBodyBytes: 262144 }),
+  server: z.strictObject({ host: z.string().min(1).default('127.0.0.1'), port: z.number().int().min(1).max(65535).default(3000), timeoutMs: z.number().int().min(1000).max(3600000).default(180000), maxConcurrency: z.number().int().min(1).max(16).default(2), maxBodyBytes: z.number().int().min(1024).max(8388608).default(1048576) }).default({ host: '127.0.0.1', port: 3000, timeoutMs: 180000, maxConcurrency: 2, maxBodyBytes: 1048576 }),
   auth: z.strictObject({ apiKey: z.string().min(43).max(256).refine(v => !/replace|placeholder|changeme|example|your[_-]?key/i.test(v) && new Set(v).size >= 16, 'Generate a aiclitoaiapi key with setup or rotate-key') }),
   compatibility: z.strictObject({ defaultWorkspace: z.string().optional(), defaultModel: z.string().optional(), toolTimeoutMs: z.number().int().min(1000).max(1800000).default(300000), maxPendingTools: z.number().int().min(1).max(64).default(8) }).default({ toolTimeoutMs: 300000, maxPendingTools: 8 }),
   // `provider` is an internal compatibility view. Public configuration uses
   // only the `providers` array; parseConfig derives this field from its Codex entry.
   provider: codexProviderSchema.optional(),
   providers: z.array(agyProviderSchema).default([]),
+  remoteAgents: z.array(z.strictObject({ id: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), token: z.string().min(32).max(256) })).default([]),
   workspaces: z.record(z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), z.strictObject({ path: z.string(), access: z.enum(['read-only', 'read-write']), capabilities: z.strictObject({ fileRead: z.boolean(), fileWrite: z.boolean(), shell: z.boolean(), sandbox: z.boolean().default(true) }).optional() })).refine(v => Object.keys(v).length > 0, 'Configure at least one workspace')
 });
 type ParsedConfig = z.infer<typeof configSchema>;
@@ -43,6 +44,7 @@ export function parseConfig(value: unknown): Config {
   if (!result.success) throw new Error('Invalid configuration: ' + result.error.issues.map(i => i.path.join('.') + ': ' + i.message).join('; '));
   if (result.data.compatibility.defaultWorkspace && !Object.hasOwn(result.data.workspaces, result.data.compatibility.defaultWorkspace)) throw new Error('compatibility.defaultWorkspace must name a configured workspace.');
   if (new Set(result.data.providers.map(p => p.id)).size !== result.data.providers.length || result.data.providers.some(p => p.id === 'codex')) throw new Error('Provider IDs must be unique and cannot use the reserved ID "codex".');
+  if (new Set(result.data.remoteAgents.map(agent => agent.id)).size !== result.data.remoteAgents.length) throw new Error('Remote agent IDs must be unique.');
   if (!result.data.provider) throw new Error('Configure a Codex provider.');
   return result.data as Config;
 }

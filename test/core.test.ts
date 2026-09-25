@@ -131,10 +131,11 @@ test('file symlinks inside the workspace are allowed and file escapes are reject
 });
 test('request translation and model effort are strict and separate', () => {
   const input = { messages: [{ role: 'system', content: 'Be precise' }, { role: 'user', content: 'Hello' }, { role: 'assistant', content: 'Previous response' }], model: 'available', reasoning_effort: 'Strong' };
-  const request = parseRequest(input); const models = [{ id: 'available', efforts: ['low', 'high'], defaultEffort: 'low', isDefault: true }];
+  const request = parseRequest(input); const models = [{ id: 'available', efforts: ['low', 'high'], defaultEffort: 'low', isDefault: true, capabilities: { chat_completions: true, streaming: true, reasoning: true, external_tools: true } }];
   assert.deepEqual(selectModel(request, models, fixtureConfig().provider), { model: 'available', effort: 'high' });
   assert.match(translate(request.messages).instructions, /Be precise/); assert.match(translate(request.messages).prompt, /Previous response/);
-  for (const field of ['temperature', 'tools', 'max_tokens', 'workspace', 'session_id', 'n']) assert.throws(() => parseRequest({ ...input, [field]: 'x' }));
+  for (const field of ['temperature', 'tools', 'max_tokens', 'n']) assert.throws(() => parseRequest({ ...input, [field]: 'x' }));
+  assert.deepEqual(parseRequest({ ...input, workspace: '/ignored', session_id: 'ignored' }), request);
   assert.throws(() => selectModel({ ...request, model: 'fake' }, models, fixtureConfig().provider));
   assert.throws(() => selectModel({ ...request, reasoning_effort: 'ultra' }, models, fixtureConfig().provider));
 });
@@ -163,7 +164,7 @@ test('redaction catches secrets split across streaming chunks and host paths', (
   assert.ok(!text.includes(key)); assert.ok(!text.includes('Sensitive')); assert.ok(!text.includes('/home/me'));
 });
 test('sandbox profile separately denies reads and limits writes', () => {
-  const args = profileArgs({ path: '/approved', access: 'read-only' }, ['/secrets']); const text = args.join(' ');
+  const args = profileArgs({ path: '/approved', access: 'read-only', capabilities: { fileRead: true, fileWrite: true, shell: true, sandbox: true } }, ['/secrets']); const text = args.join(' ');
   assert.match(text, /":root"="deny"/); assert.match(text, /"\/approved"="read"/); assert.match(text, /"\/secrets"="deny"/); assert.match(text, /network.enabled=false/);
   if (process.platform === 'win32') assert.throws(requireNativePlatform, { code: 'native_isolation_unavailable' });
 });

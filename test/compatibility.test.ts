@@ -56,8 +56,8 @@ test('default text format, nullable controls and empty stop preserve text behavi
   }
 });
 
-test('invalid types, out-of-range controls and unknown fields remain rejected without data leaks', () => {
-  for (const invalid of [{ temperature: 'secret-value' }, { temperature: 3 }, { top_p: -1 }, { max_tokens: 0 }, { max_completion_tokens: 1.5 }, { presence_penalty: 3 }, { seed: 0.1 }, { user: 42 }, { 'secret-key': 'secret-value' }, { messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'secret-value' } }] }] }]) {
+test('invalid types and nested request fields remain rejected without data leaks', () => {
+  for (const invalid of [{ temperature: 'secret-value' }, { temperature: 3 }, { top_p: -1 }, { max_tokens: 0 }, { max_completion_tokens: 1.5 }, { presence_penalty: 3 }, { seed: 0.1 }, { user: 42 }, { messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'secret-value' } }] }] }]) {
     const entries: CompatibilityDiagnostic[] = [];
     assert.throws(() => normalizeChatCompletionRequest({ ...basic, ...invalid }, entry => entries.push(entry)), (e: unknown) => {
       assert.ok(e instanceof AIcliToAIapiError);
@@ -66,4 +66,19 @@ test('invalid types, out-of-range controls and unknown fields remain rejected wi
     });
     assert.ok(!JSON.stringify(entries).includes('secret-'));
   }
+});
+
+test('unknown top-level client metadata is ignored and never returned to providers', () => {
+  const entries: CompatibilityDiagnostic[] = [];
+  const result = normalizeChatCompletionRequest({ ...basic, providerOptions: { private: 'secret-value' }, metadata: { trace: 'secret-value' } }, entry => entries.push(entry));
+  assert.deepEqual(result, { ...basic, stream: false });
+  assert.deepEqual(entries.at(-1), { field: 'request_metadata', action: 'ignored', reason: 'Unknown top-level request metadata is ignored and never forwarded to a provider.' });
+  assert.ok(!JSON.stringify(entries).includes('secret-value'));
+});
+
+test('unknown nested message and tool fields are discarded for client compatibility', () => {
+  const result = parseRequest({ ...basic, messages: [{ role: 'user', content: 'Hello', metadata: { private: 'secret-value' } }], tools: [{ type: 'function', function: { name: 'weather', parameters: {}, providerOptions: { private: 'secret-value' } }, providerMetadata: { private: 'secret-value' } }] });
+  assert.deepEqual(result.messages, basic.messages);
+  assert.deepEqual(result.tools, [{ type: 'function', function: { name: 'weather', parameters: {} } }]);
+  assert.ok(!JSON.stringify(result).includes('secret-value'));
 });

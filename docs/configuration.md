@@ -7,6 +7,7 @@ This guide describes the configuration accepted by the current application. Inst
 - [First-time setup](#first-time-setup)
 - [Complete configuration template](#complete-configuration-template)
 - [Settings reference](#settings-reference)
+- [Remote coding agent](#remote-coding-agent)
 - [Workspace selection and paths](#workspace-selection-and-paths)
 - [Project skills and symbolic links](#project-skills-and-symbolic-links)
 - [Windows execution mode](#windows-execution-mode)
@@ -121,6 +122,8 @@ aiclitoaiapi serve "~/.aiclitoaiapi/aiclitoaiapi.json"
 
 The banner shows the actual listening address, port, hostname, process ID, URLs, endpoints, and request settings. `LISTENING` means the HTTP server started; it is not a successful generation test. Stop with Ctrl+C.
 
+The interactive `setup` wizard asks whether to bind only to this computer (`127.0.0.1`, the default) or to every IPv4 network interface (`0.0.0.0`). Choose the latter only when LAN access is intended; allow the configured port through the host firewall and use the host's LAN IP address in client URLs.
+
 For compiled execution after `npm run build`:
 
 ```powershell
@@ -140,7 +143,7 @@ This is a setup template, not a ready-to-serve credential file. Replace `YOUR_US
     "port": 3000,
     "timeoutMs": 180000,
     "maxConcurrency": 2,
-    "maxBodyBytes": 262144
+    "maxBodyBytes": 1048576
   },
   "auth": {
     "apiKey": "REPLACE_WITH_A_SECURE_RANDOM_KEY"
@@ -170,11 +173,12 @@ This is a setup template, not a ready-to-serve credential file. Replace `YOUR_US
       "allowUnqualifiedExecution": true
     }
   ],
+  "remoteAgents": [],
   "workspaces": {
     "project-a": {
       "path": "C:/Projects/project-a",
       "access": "read-write",
-      "capabilities": { "fileRead": true, "fileWrite": true, "shell": false, "sandbox": true }
+      "capabilities": { "fileRead": true, "fileWrite": true, "shell": true, "sandbox": true }
     },
     "reference-docs": {
       "path": "C:/Documents/reference",
@@ -198,7 +202,7 @@ The entire `server` object may be omitted to use its defaults.
 | `server.port` | `3000` | Integer from 1 to 65535. Must be available. |
 | `server.timeoutMs` | `180000` | Integer from 1000 to 3600000; maximum request duration in milliseconds. Timeout cancels execution, but prior side effects are not rolled back. |
 | `server.maxConcurrency` | `2` | Integer from 1 to 16. Limits generation requests; model discovery has a separate pool of the same size. A workspace permits one active generation at a time. |
-| `server.maxBodyBytes` | `262144` | Integer from 1024 to 1048576. Maximum POST body size in bytes; default is 256 KiB. |
+| `server.maxBodyBytes` | `1048576` | Integer from 1024 to 8388608. Maximum POST body size in bytes; default is 1 MiB. Raise it for large coding-assistant histories; 4 MiB is `4194304`. |
 
 ### Authentication
 
@@ -209,6 +213,40 @@ The entire `server` object may be omitted to use its defaults.
 All endpoints require `Authorization: Bearer <key>`. One shared key grants access to all configured workspaces; workspace IDs are not separate user permissions. Never paste real keys into support messages, source control, or screenshots.
 
 ### Compatibility
+
+#### Stateless conversation history
+
+`POST /v1/chat/completions` supports complete text conversation histories in `messages`: `system`, `developer`, `user`, `assistant`, and completed `tool` results. `X-Session-ID` and `X-Thread-ID` are accepted and ignored for client compatibility; they do not create or resume server-side state. Clients must resend the relevant history on every request. This makes each request independently routable to Codex or Antigravity while preserving the chat context supplied by the client.
+
+For a coding assistant, retain the system/developer instruction plus the relevant previous user and assistant turns, rather than only the final user message. Include every assistant tool call together with its matching tool result before sending a later user turn.
+
+#### OpenCode
+
+OpenCode can use this gateway as an OpenAI-compatible Chat Completions provider. Use `@ai-sdk/openai-compatible`, not its Responses API provider. Set `AICLITOAIAPI_API_KEY` in the environment, replace `MODEL_ID` with one returned by `aiclitoaiapi models CONFIG`, and use a reachable LAN address when OpenCode runs on another machine:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "aiclitoaiapi": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "AIcliToAIapi",
+      "options": {
+        "baseURL": "http://127.0.0.1:3000/v1",
+        "apiKey": "{env:AICLITOAIAPI_API_KEY}",
+        "headers": { "X-Workspace-ID": "workspace" }
+      },
+      "models": {
+        "MODEL_ID": { "name": "MODEL_ID" }
+      }
+    }
+  }
+}
+```
+
+OpenCode is responsible for sending its full message history. If it sends `X-Session-ID` or `X-Thread-ID`, the gateway accepts and ignores them. The gateway accepts OpenAI function-tool history for Codex. For Antigravity, the gateway uses `agy --json-schema` to bridge one final structured result into either an OpenAI external function call or a final answer; the next history-bearing request supplies the matching tool result. Antigravity native workspace tools remain available too.
+
+OpenAI-compatible clients sometimes attach provider-specific metadata at the request, message, or tool level. The gateway accepts and discards undocumented fields rather than forwarding them upstream, so they do not block a request or alter provider behavior. Required fields and documented values are still validated. Request payload values are not written to normal gateway logs; the explicit local `serve --debug` mode prints a recursively redacted, bounded payload for troubleshooting.
 
 The entire `compatibility` object may be omitted.
 
@@ -259,19 +297,84 @@ For example, expose `gemini-3.8-flash-high` unchanged, or publish it as `fast-co
 
 #### Workspace capabilities
 
-Capabilities are per workspace and control Antigravity built-in tools. Omit `capabilities` to keep tool execution conservative. `fileRead` permits workspace file reads, `fileWrite` uses Antigravity edit-only mode, `shell` enables its shell tools and auto-approval, and `sandbox` defaults to `true`. Shell access is independent from file write access:
+Capabilities are per workspace and control the native workspace tools available to both Codex and Antigravity. New configurations created by `setup` enable all four capabilities. `fileRead` permits workspace file reads, `fileWrite` permits writes in a `read-write` workspace, `shell` enables shell tools and auto-approval, and `sandbox` enables the provider sandbox. Omit `capabilities` to deny file and shell tools. Shell access is independent from file write access:
 
 ```json
-"capabilities": { "fileRead": true, "fileWrite": true, "shell": false, "sandbox": true }
+"capabilities": { "fileRead": true, "fileWrite": true, "shell": true, "sandbox": true }
 ```
 
-Set `shell: true` only for trusted clients and workspaces. A `read-only` workspace must not be used for writes regardless of these settings.
+Set `shell: true` only for trusted clients and workspaces. A `read-only` workspace never reports or permits file writes regardless of these settings.
+
+#### Model capabilities
+
+`GET /v1/models` returns a `capabilities` extension for every model. `chat_completions`, `streaming`, `reasoning`, and `external_tools` describe the selected provider adapter. `workspace_file_read`, `workspace_file_write`, `workspace_shell`, and `sandbox` describe the effective workspace selected by `X-Workspace-ID`, or the default workspace when the header is omitted. Antigravity exposes `external_tools: true` through its JSON-schema tool bridge; its native file and shell tools are reported through the workspace fields.
 
 Model selection order is request `model`, configured `defaultModel`, catalog default, then first available model. An explicitly requested/configured unavailable model fails instead of silently falling back.
 
 Effort selection order is request `reasoning_effort`, configured `defaultReasoning`, then the selected model's default. `Light`, `Medium`, and `Strong` map to `low`, `medium`, and `high`; these are valid only when the model supports the resulting value. Query `GET /v1/models` for actual IDs and `reasoning_efforts` before adding model defaults. Do not assume a fixed catalog.
 
 The dedicated home cannot contain custom `config.toml`, `AGENTS.md`, `AGENTS.override.md`, hooks, rules, plugins, or custom skills. The pinned runtime's generated `skills/.system` directories are permitted, but those bundled skills are disabled. Do not point this setting at your personalized desktop Codex home.
+
+## Remote coding agent
+
+A remote agent lets Codex or Antigravity reason on the gateway computer while file, Git, shell, and custom tool execution occurs on another computer. The execution protocol is stateless, but the remote workspace is stateful: files, Git changes, installed dependencies, and other filesystem state remain in the configured remote directory across requests and agent restarts. Conversation memory is not stored by the gateway or worker; clients must continue to resend the relevant `messages` history.
+
+Generate one independent random agent token and place the same value in both configurations. It is separate from `auth.apiKey`. Example gateway fragment:
+
+```json
+"remoteAgents": [
+  { "id": "developer-laptop", "token": "REPLACE_WITH_AT_LEAST_32_RANDOM_CHARACTERS" }
+]
+```
+
+Create `~/.aiclitoaiapi/remote-agent.json` on the execution computer. The published package includes `aiclitoaiapi.remote-agent.example.json`:
+
+```json
+{
+  "gatewayUrl": "http://192.168.1.50:3000",
+  "agentId": "developer-laptop",
+  "token": "REPLACE_WITH_THE_SAME_RANDOM_TOKEN_AS_THE_GATEWAY",
+  "workspaceId": "project-a",
+  "workspace": "C:/Projects/project-a",
+  "timeoutMs": 300000,
+  "maxOutputBytes": 1048576,
+  "handlers": {
+    "custom_tool_name": {
+      "command": "C:/agent-tools/custom-tool.cmd",
+      "args": []
+    }
+  }
+}
+```
+
+Use native paths on each platform (`/Users/your-user/project` on macOS or `/home/your-user/project` on Linux). Protect this file as a credential. Start the gateway first, then connect the worker:
+
+```powershell
+# Windows PowerShell
+aiclitoaiapi.cmd agent connect "$HOME/.aiclitoaiapi/remote-agent.json"
+```
+
+```sh
+# macOS or Linux
+aiclitoaiapi agent connect "$HOME/.aiclitoaiapi/remote-agent.json"
+```
+
+The agent makes outbound long-polling HTTP requests, so its computer does not need an inbound listening port. For internet use, put the gateway behind HTTPS or a trusted VPN; do not send either bearer credential over public plaintext HTTP.
+
+Send both remote headers on model discovery and chat requests:
+
+```text
+X-Remote-Agent-ID: developer-laptop
+X-Remote-Workspace-ID: project-a
+```
+
+`X-Remote-Workspace-ID` defaults to the agent ID when omitted and must equal the worker's `workspaceId`. `X-Workspace-ID` is still required because it selects the gateway-side provider runner and concurrency lock; in remote mode its native file and shell capabilities are disabled for that generation. Add `X-Remote-Agent-ID` to `GET /v1/models` to see `workspace_remote`, `remote_builtin_tools`, and `remote_custom_tools` reported as enabled.
+
+Remote mode publishes every built-in worker tool: `read_file`, `write_file`, `list_directory`, `search_files`, `shell_execute`, `git_status`, `git_diff`, and `git_log`. Client-supplied OpenAI function definitions are also passed to the model. A custom function executes remotely only when its exact name appears in `handlers`; the handler receives the function argument object as JSON on stdin and returns its stdout as the tool result. No arbitrary client-supplied command path is executed.
+
+The remote shell is intentionally unrestricted and runs with the agent process account in the persistent workspace directory. Workspace-relative checks protect the direct file tools, but they do not sandbox shell commands or prevent the shell from accessing other OS paths. Run the agent under a dedicated, least-privileged account and connect only trusted clients. The remote agent token therefore grants high authority and must never be logged or committed.
+
+The gateway keeps only bounded in-memory correlation while an original chat request waits for a tool result. Correlations expire after `compatibility.toolTimeoutMs`, are lost on gateway restart, and are never replayed. The worker executes each received task once and retries delivery of the captured result, not execution. A timeout or disconnected client may still leave side effects in the persistent remote workspace; inspect state before retrying.
 
 ## Workspace selection and paths
 
@@ -511,6 +614,7 @@ This second request performs a real model call and can consume account usage. Do
 | --- | --- |
 | `setup [CONFIG] [TEMPLATE]` | With no arguments in an interactive terminal, start the provider-login/workspace wizard using the default home configuration path. Otherwise create a configuration from the supplied/default path and optional template; repairs an existing configuration only when its API key is missing. |
 | `config [CONFIG] [--show-secrets]` | Display server, provider, compatibility, and workspace settings. The API key is redacted by default; pass `--show-secrets` only in a private terminal to display it once. |
+| `agent connect [AGENT_CONFIG]` | Connect the persistent remote-workspace worker. Defaults to `~/.aiclitoaiapi/remote-agent.json`. |
 | `secure-config CONFIG` | Repair permissions without rotating the key or changing configuration content |
 | `login CONFIG [--device-auth]` | Sign the dedicated runtime into ChatGPT |
 | `doctor CONFIG` | Report platform mode and query the authenticated model catalog |
@@ -555,7 +659,10 @@ The configuration directory must be dedicated and contain only the config file a
 | Project skill unavailable | Check the Codex provider's `allowProjectSkills`, the project's `.agents/skills/<name>/SKILL.md` layout, and that the server was restarted. Custom skills in the dedicated Codex home are still rejected. |
 | `409 workspace_busy` | A request or external tool continuation holds the workspace. Wait for completion/expiry; avoid concurrent workflows against the same workspace. |
 | `409 tool_session_expired` | A tool continuation expired or was lost on restart. Check whether the external action ran before deliberately restarting the workflow. |
-| `413 request_too_large` | Reduce the request body or raise `maxBodyBytes` within its allowed range. |
+| `401 remote_agent_authentication` | The agent ID/token pair is missing or does not match `remoteAgents` in the running gateway configuration. |
+| `409 remote_task_expired` | The result arrived after its correlation expired, was already delivered, or belongs to another agent. Inspect remote side effects before retrying. |
+| `504 remote_tool_timeout` | The configured remote worker did not return a result before `compatibility.toolTimeoutMs`. Confirm it is connected and that its tool process is responsive. |
+| `413 request_too_large` | Reduce the request body or raise `server.maxBodyBytes` within its allowed range. Existing configurations created before this change commonly use `262144`; use `1048576` or `4194304` for larger coding-assistant histories. |
 | `429` | Check the error code: local capacity and upstream usage limits require different remedies. Reduce concurrency or wait for account limits as appropriate. |
 | `503 native_isolation_unavailable` | On Windows, check for explicit `allowUnqualifiedWindowsExecution: false`. On Linux/macOS, inspect native sandbox prerequisites/probes. Turning the Windows flag on does not fix native backend failures. |
 | Restricted-token/elevated sandbox error | The runtime cannot initialize the requested Windows permissions. The unqualified-execution flag skips qualification only; it does not remove the native permission profile. |

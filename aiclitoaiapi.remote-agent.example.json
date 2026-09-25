@@ -1,0 +1,15 @@
+{
+  "gatewayUrl": "http://192.168.1.50:3000",
+  "agentId": "developer-laptop",
+  "token": "REPLACE_WITH_THE_SAME_RANDOM_TOKEN_AS_THE_GATEWAY",
+  "workspaceId": "project-a",
+  "workspace": "C:/Projects/project-a",
+  "timeoutMs": 300000,
+  "maxOutputBytes": 1048576,
+  "handlers": {
+    "custom_tool_name": {
+      "command": "C:/agent-tools/custom-tool.cmd",
+      "args": []
+    }
+  }
+}

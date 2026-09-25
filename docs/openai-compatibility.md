@@ -32,7 +32,8 @@ Parameter semantics were checked against the [OpenAI Chat Completions reference]
 | `stop` | Null/empty list only | Partially supported unchanged: omitted/null/empty list accepted; strings and nonempty lists rejected |
 | `response_format` | Text only despite generic error | Partially supported: text/null/omitted use default text; json_object/json_schema rejected explicitly |
 | `logprobs` | False/null only | Partially supported: false/null/omitted accepted; true rejected explicitly |
-| Other fields and multimodal input | Rejected | Unsupported; unknown keys and malformed input remain rejected |
+| Undocumented fields | Rejected | Accepted and discarded for client compatibility; never forwarded to providers |
+| Multimodal input and malformed documented fields | Rejected | Unsupported; documented types, required fields, and values remain validated |
 
 Accepted-but-ignored controls are stripped rather than forwarded to the runtime. They must not be relied on for essential behavior. If a caller requires bounded tokens, deterministic generation or strict tool argument enforcement, this gateway does not provide those guarantees.
 
@@ -52,9 +53,11 @@ Unsupported semantic requests return HTTP 400, including when `stream: true`:
 {"error":{"message":"Only n=1 is currently supported.","type":"invalid_request_error","param":"n","code":"unsupported_value"}}
 ```
 
-Invalid types/ranges use `invalid_value`; unknown fields use `unsupported_parameter`. Errors identify the known top-level parameter. Unknown field names are deliberately not echoed, since they can contain secrets. Existing history/model errors now also identify their parameter.
+Invalid documented types/ranges use `invalid_value`. Undocumented request, message, and tool fields are discarded and reported only by the opt-in redacted debug payload described below. Existing history/model errors identify their documented parameter.
 
 Set `AICLITOAIAPI_DEBUG=1` before starting the gateway to print normalization diagnostics. Programmatic log callbacks receive events named `openai_compatibility` with `level: debug`, a known field name, action (`preserved`, `ignored`, `translated`, `rejected`) and fixed reason. Normal terminal logging stays concise. Logs never contain parameter values, unknown key names, authorization headers, schemas, tool arguments, credentials or prompts. This is not raw request logging.
+
+For local debugging only, start the gateway with `aiclitoaiapi serve CONFIG --debug`. This prints the parsed request payload and undocumented field values after recursive redaction of API keys, authorization values, passwords, tokens, cookies, credentials, configured gateway/agent tokens, and bearer-shaped strings. Output is depth-, field-, string-, and total-size bounded. Payloads may still contain private prompts, source code, paths, and tool results, so never enable this mode on shared production logs.
 
 ## Verification scope
 

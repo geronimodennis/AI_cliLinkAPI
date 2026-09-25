@@ -5,7 +5,9 @@ import type { Workspace } from './config.js';
 import { AIcliToAIapiError } from './errors.js';
 import type { Rpc } from './providers/rpc.js';
 export function profileArgs(workspace: Workspace, secrets: string[]): string[] {
-  const fs: Record<string, string> = { ':root': 'deny', ':minimal': 'read', [workspace.path]: workspace.access === 'read-only' ? 'read' : 'write', [process.execPath]: 'read' };
+  const canRead = workspace.capabilities?.fileRead ?? false;
+  const canWrite = canRead && workspace.access === 'read-write' && (workspace.capabilities?.fileWrite ?? false);
+  const fs: Record<string, string> = { ':root': 'deny', ':minimal': 'read', [workspace.path]: canWrite ? 'write' : canRead ? 'read' : 'deny', [process.execPath]: 'read' };
   for (const secret of secrets) fs[secret] = 'deny';
   for (const name of ['.git', '.codex', '.agents']) fs[path.join(workspace.path, name)] = 'read';
   const table = Object.entries(fs).map(([key, value]) => `${JSON.stringify(key)}=${JSON.stringify(value)}`).join(',');

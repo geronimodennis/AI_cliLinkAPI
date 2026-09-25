@@ -10,7 +10,7 @@ Native Node.js/strict TypeScript gateway for a **ChatGPT-authenticated Codex** r
 
 ## Multiple providers
 
-Configure every runtime in the `providers` array. The Codex entry uses the reserved ID `codex`; add Antigravity CLI entries alongside it. `GET /v1/models` aggregates models from every healthy provider and returns the provider in `owned_by`; `POST /v1/chat/completions` routes by the requested model ID. Model IDs must be unique across providers, so use `modelAliases` when two providers expose the same ID. The Antigravity provider uses the official `agy --input-format stream-json --output-format stream-json` protocol. It supports the CLI's built-in workspace and shell tools, but does not yet support OpenAI external function-tool continuation.
+Configure every runtime in the `providers` array. The Codex entry uses the reserved ID `codex`; add Antigravity CLI entries alongside it. `GET /v1/models` aggregates models from every healthy provider and returns the provider in `owned_by`; `POST /v1/chat/completions` routes by the requested model ID. Model IDs must be unique across providers, so use `modelAliases` when two providers expose the same ID. The Antigravity provider uses the official `agy --input-format stream-json --output-format stream-json` protocol. Its tool bridge uses `agy --json-schema` to return either a final answer or one OpenAI-compatible external function call; the client's next request supplies the matching tool result in `messages`.
 
 Sign in to a configured Antigravity provider with `aiclitoaiapi agy-login CONFIG PROVIDER_ID`, for example `aiclitoaiapi agy-login "C:/Users/YOUR_USER/.aiclitoaiapi/aiclitoaiapi.json" antigravity`. This starts the official interactive CLI; its keyring credentials are never read by aiclitoaiapi.
 
@@ -104,7 +104,7 @@ Restart and update clients through your own secure secret-distribution method. R
 
 All endpoints require `Authorization: Bearer <aiclitoaiapi-key>`. One shared key gives its holder access to **all** configured workspaces. There is no per-workspace identity or privilege separation between key holders.
 
-`GET /v1/models` queries the logged-in runtime's `model/list`; it returns visible models, optionally intersected with `provider.allowedModels`. An empty allowlist means all discovered visible models. `reasoning_efforts` is a aiclitoaiapi extension. No static/fabricated model catalog is shipped. A runtime catalog is not a guarantee of remaining quota or a successful future request.
+`GET /v1/models` queries the logged-in runtime's `model/list`; it returns visible models, optionally intersected with `provider.allowedModels`. An empty allowlist means all discovered visible models. `reasoning_efforts` and `capabilities` are aiclitoaiapi extensions. Capabilities include provider features plus the effective workspace file, shell, and sandbox permissions selected by `X-Workspace-ID` (or the default workspace). No static/fabricated model catalog is shipped. A runtime catalog is not a guarantee of remaining quota or a successful future request.
 
 `POST /v1/chat/completions` supports only:
 
@@ -115,7 +115,9 @@ All endpoints require `Authorization: Bearer <aiclitoaiapi-key>`. One shared key
 | `reasoning_effort` | Separate native setting validated against that model's discovered efforts |
 | `stream` | Boolean, default false |
 
-`X-Workspace-ID` selects a configured workspace. Clients such as n8n may omit it when `compatibility.defaultWorkspace` is configured. Arbitrary directories and session IDs are rejected. New conversations start ephemeral Codex threads; matching external tool results resume the waiting turn using a bounded, one-use continuation. Send conversation history each time. System/developer messages become Codex developer instructions with role labels; Codex's own instructions remain in force. See [n8n setup and limitations](docs/n8n.md).
+`X-Workspace-ID` selects a configured workspace. Clients such as n8n may omit it when `compatibility.defaultWorkspace` is configured. Arbitrary directories are rejected. `X-Session-ID` and `X-Thread-ID` are accepted and ignored for OpenAI-compatible client compatibility; they never create or resume server-side state. Every request is stateless: resend the complete relevant `messages` history—system, developer, user, assistant, and completed tool turns—on every call. New conversations start ephemeral Codex threads; matching external tool results resume the waiting turn using a bounded, one-use continuation. System/developer messages become Codex developer instructions with role labels; Codex's own instructions remain in force. See [n8n setup and limitations](docs/n8n.md).
+
+For a stateful remote coding workspace, configure `remoteAgents`, run `aiclitoaiapi agent connect`, and send `X-Remote-Agent-ID` plus `X-Remote-Workspace-ID`. The gateway then exposes remote read/write/search/shell/Git tools and any client tool whose name has an explicitly registered remote handler. Files and Git state persist on the remote computer; conversation history still comes from `messages`, and tool-call correlation is bounded and memory-only. The remote shell has the full authority of its OS account, so use a dedicated account, HTTPS/VPN, and trusted clients. See the [remote coding agent guide](docs/configuration.md#remote-coding-agent).
 
 Friendly effort labels `Light`, `Medium`, `Strong` map to `low`, `medium`, `high` only if supported. Other values must appear in discovery. Defaults can be set as `provider.defaultModel` and `provider.defaultReasoning`. Invalid defaults or overrides are rejected, never downgraded. Effort is never added to prompt text and is unrelated to verbosity or output limits.
 

@@ -52,7 +52,7 @@ test('setup without a template generates a multi-provider configuration', async 
     assert.equal(config.compatibility.defaultWorkspace, 'workspace');
     assert.equal(config.workspaces.workspace.path, process.cwd());
     assert.equal(config.workspaces.workspace.capabilities.fileWrite, true);
-    assert.equal(config.workspaces.workspace.capabilities.shell, false);
+    assert.equal(config.workspaces.workspace.capabilities.shell, true);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 test('permissions repair preserves existing configuration and rejects shared directories', async () => {
