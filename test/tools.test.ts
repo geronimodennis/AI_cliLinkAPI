@@ -32,6 +32,14 @@ test('pending calls are bounded, expire and close their runtime', async () => {
   await delay(40); assert.deepEqual(closed, [1]); assert.throws(() => store.take(resume(start, call)), { code: 'tool_session_expired' });
   store.put(start, 3, 'weather', {}); await store.closeAll(); assert.deepEqual(closed, [1, 3]);
 });
+test('a fresh stateless request can discard an abandoned workspace continuation', async () => {
+  const closed: number[] = []; const store = new ToolSessions<number>(2, 1000, async value => { closed.push(value); });
+  const start = input(); store.put(start, 1, 'weather', {});
+  assert.equal(store.hasWorkspace('/project'), true);
+  await store.discardWorkspace('/project');
+  assert.equal(store.hasWorkspace('/project'), false); assert.deepEqual(closed, [1]);
+  assert.doesNotThrow(() => store.put(start, 2, 'weather', {})); await store.closeAll(); assert.deepEqual(closed, [1, 2]);
+});
 test('tool histories reject dangling, duplicate and fabricated results', () => {
   const start = input(); const call: ToolCall = { id: 'a', type: 'function', function: { name: 'weather', arguments: '{}' } };
   assert.doesNotThrow(() => resume(start, call));

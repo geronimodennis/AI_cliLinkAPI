@@ -2,20 +2,20 @@
 
 ## Project purpose
 
-`aiclitoaiapi` (package name; repo "CLI Link API") is a native Node.js/strict-TypeScript HTTP gateway that exposes an **OpenAI-compatible API** (`GET /v1/models`, `POST /v1/chat/completions`, SSE streaming) over a **ChatGPT-authenticated Codex runtime**, with optional Google Antigravity CLI (`agy`) providers. Verified from `README.md` and `src/`.
+`aiclitoaiapi` (package name; repo "CLI Link API") is a native Node.js/strict-TypeScript HTTP gateway exposing an **OpenAI-compatible Chat Completions API** over a ChatGPT-authenticated Codex runtime and optional Google Antigravity CLI (`agy`) providers. It also connects outbound remote workers for persistent coding workspaces. This guide reflects the current source, tests, and package metadata.
 
 - The gateway key in config protects the HTTP service; it is **not** an OpenAI API key.
-- API is deliberately **stateless**: every request starts a fresh ephemeral Codex thread; clients send conversation history in `messages`. Session/thread IDs are rejected (`src/sessions.ts`).
-- It spawns the official Codex CLI binary (pinned) as a child process and speaks its JSON-RPC "app-server" protocol over stdio. No containers, VMs, or direct OpenAI API client.
+- Conversation history is **client supplied** in `messages`; `X-Session-ID` and `X-Thread-ID` are accepted but ignored. A normal Codex request starts an ephemeral thread. A Codex external function call retains a bounded, one-use, in-memory continuation of that thread until the matching tool result arrives or expires. The remote worker's files and Git state persist independently of conversation history.
+- The gateway spawns the pinned official Codex CLI and speaks its JSON-RPC app-server protocol over stdio. Antigravity uses the official `agy` CLI. There are no containers, VMs, or direct OpenAI API client.
 
 ## Technology stack (verified)
 
 - **Runtime:** Node.js >= 22 (package.json `engines`), ESM (`"type": "module"`).
 - **Language:** strict TypeScript 5.9 (`tsconfig.json`: `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `module: NodeNext`, `target: ES2023`).
 - **HTTP:** raw `node:http` — no web framework (`src/server.ts`).
-- **Schemas/validation:** `zod` v4, `strictObject` throughout for config and request bodies.
+- **Schemas/validation:** `zod` v4. Configuration and remote worker configuration use strict objects. Chat request normalization accepts documented compatibility fields and discards unknown client metadata; semantic validation follows in `src/requests.ts`.
 - **Runtime dependency (pinned):** `@openai/codex` / `@openai/codex-sdk` **0.155.0** exactly; version checked at startup against `RUNTIME_VERSION` in `src/providers/runtime.ts`. Changing the pin requires re-qualification (protocol, permission profiles, sandbox tests) per `README.md`.
-- **Dev deps only:** `@types/node`, `tsx` (runs tests/source), `typescript`.
+- **Runtime deps:** pinned `@openai/codex`, `@openai/codex-sdk`, and `zod`. **Dev deps:** `@types/node`, `tsx`, `typescript`.
 - **Tests:** `node:test` runner + `assert/strict` via `tsx --test`. No Jest/Mocha.
 
 ## Directory structure
@@ -23,9 +23,10 @@
 ```
 src/                 Application source (all .ts)
   cli.ts             CLI commands: setup, secure-config, rotate-key, login,
-                     providers, config, models, doctor, serve (bin entry: dist/src/cli.js)
-  server.ts          HTTP server; routes /v1/models and /v1/chat/completions; SSE; timeouts
-  config.ts          Zod config schema, path validation, workspace/symlink inspection
+                     providers, config, models, doctor, serve, agent connect
+                     (bin entry: dist/src/cli.js)
+  server.ts          HTTP routes, SSE, client tools, remote-tool orchestration, timeouts
+  config.ts          Public providers array normalization, path/workspace validation
   requests.ts        Request parsing, model selection, message translation
   chat-compatibility.ts  Zod request schema + OpenAI-compat normalization w/ diagnostics
   auth.ts            Bearer-key auth (timing-safe, SHA-256 digest compare)
@@ -33,56 +34,57 @@ src/                 Application source (all .ts)
   sessions.ts        ExecutionSlots concurrency guard (per-workspace)
   sandbox.ts         Native permission profile args + isolation probe + platform gate
   redaction.ts       Secret + host-path redaction, streaming-safe buffering
-  logging.ts         Allowlisted terminal request log; never logs bodies/headers
+  logging.ts         Allowlisted normal logs; opt-in redacted payload debugging
   startup.ts         Startup banner
   permissions.ts     File/dir private-mode + ACL enforcement (protect/verify*)
-  tool-sessions.ts   Bounded one-use external tool-call continuations
+  tool-sessions.ts   Bounded one-use Codex external tool-call continuations
+  remote-agents.ts  Authenticated in-memory remote task broker and result correlation
+  remote-worker.ts  Outbound worker, persistent workspace, built-in/custom tools
   providers/
     types.ts         Provider/Model/GeneratedEvent interfaces
     registry.ts      ProviderRegistry — aggregates models, routes by model ID
     codex.ts         CodexProvider + ResponseExtractor (final-answer extraction)
-    agy.ts           AgyProvider (spawns agy --input-format stream-json)
+    agy.ts           AgyProvider (stream-json CLI and JSON-schema function bridge)
     rpc.ts           JSON-RPC stdio client for codex --listen stdio://
     runtime.ts       codexBinary(), runtimeEnv(), hardeningArgs, verifyRuntime, skills
-test/
-  core.test.ts       Auth, config, paths, request parsing, redaction, sandbox args
-  compatibility.test.ts  OpenAI-compat normalization
-  http.test.ts       HTTP server end-to-end (mocked provider)
-  runtime.test.ts    Runtime verification / skills
-  setup.test.ts      Setup / secure-config / rotate-key
-  tools.test.ts      Tool continuation sessions
-  isolation.integration.ts  `test:isolation` — native sandbox probes
+test/                Auth, config, compatibility, HTTP, Codex/Antigravity adapters,
+                     tool continuations, remote worker, CLI/login/setup, isolation
 scripts/
   live.ts            `test:live` — real ChatGPT-authenticated HTTP live test
   diagnose-runtime.ts
-docs/                architecture.md, configuration.md, security.md, verification.md,
-                     openai-compatibility.md, n8n.md, n8n-ai-assistant.md
+docs/                Architecture, configuration, security, compatibility,
+                     verification, and n8n guides
 examples/client.mjs  OpenAI SDK client example
-aiclitoaiapi.example.json   Config template (placeholders only in git)
+aiclitoaiapi.example.json              Gateway config template
+aiclitoaiapi.remote-agent.example.json Remote worker config template
 ```
 
 ## Architecture / data flow (verified)
 
 1. `src/cli.ts` parses argv, resolves config path (expands `~`, `$HOME`, `%USERPROFILE%`, etc.), loads + validates config (`src/config.ts`), then for `serve` builds `createServer(config, createProvider(config, filename))`.
 2. `ProviderRegistry` (`src/providers/registry.ts`) wraps `CodexProvider` + any `AgyProvider`s; `models()` aggregates across providers, dedupes by public model ID, routes `generate()` to the right provider by model.
-3. `CodexProvider` (`src/providers/codex.ts`): validates runtime version/home, `inspectWorkspace` (symlink/hardlink/cycle guard), then opens an `Rpc` to `codex app-server --listen stdio://`, starts a thread + turn, consumes notifications via `ResponseExtractor` (only `final_answer` phase items; no fake tokens).
-4. HTTP path in `src/server.ts`: authenticate → route → concurrency slot → body limit → `parseRequest` → `selectModel` → `provider.generate` → redact → JSON or SSE. Timeouts, client disconnect, 499 cancel, redacted error trace.
-5. `ExecutionSlots` (`src/sessions.ts`) enforces per-workspace + global concurrency (409/429). `ToolSessions` (`src/tool-sessions.ts`) holds pending external tool calls with TTL + strict binding re-check on resume.
+3. `CodexProvider` (`src/providers/codex.ts`) validates the runtime and workspace, opens a stdio app-server, starts an ephemeral thread and turn, and extracts labelled `final_answer` events. Registered OpenAI function tools become native dynamic tools. A call pauses that turn; `ToolSessions` retains its RPC connection and checks the matching client tool result before resuming. A fresh request in that workspace discards an abandoned continuation.
+4. `AgyProvider` (`src/providers/agy.ts`) discovers models through `agy models` and generates through stream-json. For external functions, it uses `--json-schema` to return either one function call or a final answer; a later request supplies the result in `messages`.
+5. The HTTP path in `src/server.ts` authenticates, selects a workspace, limits concurrency and body size, normalizes the OpenAI request, selects a model, generates, redacts, and writes JSON or SSE. Registered client functions execute through the API client. The request instructions tell coding agents to discover the client workspace with the registered list, search, read, or shell tools before relying on remembered structure or inspecting the gateway workspace.
+6. With `X-Remote-Agent-ID`, the server adds `remote_*` built-in tool definitions and instructions to discover the remote workspace. `RemoteAgents` brokers a tool call to the outbound worker using a separate agent token; `remote-worker.ts` executes it in a persistent remote workspace and returns the captured result. The gateway appends that result as a tool turn and continues generation. The worker can also run configured custom handlers.
+7. `ExecutionSlots` (`src/sessions.ts`) enforces per-workspace and global generation concurrency (409/429). Model discovery has a separate concurrency pool. Remote task correlation and Codex continuations have count and time limits and live only in gateway memory.
 
 ## Coding standards & patterns to reuse
 
 - **ESM with explicit `.js` extensions** on relative imports (e.g. `import ... from './config.js'`). Do not use CJS.
+- **Discover the current workspace with the registered workspace glob, search, and read tools** before coding or reviewing. Do not use a Git file list as the source of truth for the working tree; it omits untracked files.
 - **strict TS**: honor `noUncheckedIndexedAccess` (non-null assertions like `models[0]!` where proven), `exactOptionalPropertyTypes`, `noImplicitOverride` (use `override` keyword).
-- **All untrusted input validated with `zod` `strictObject`** — config, RPC responses, request bodies. Parse, don't cast.
+- **Validate untrusted input at its boundary.** Config and remote worker config use Zod strict objects. Chat requests use the compatibility normalizer plus tool-history checks; unknown OpenAI client metadata is accepted and discarded. Some RPC/event and remote task parsing uses narrower schemas or explicit checks; keep validation appropriate to each boundary.
 - **Error model:** throw `AIcliToAIapiError(status, code, message, param?)` from `src/errors.ts`; convert unknown/upstream errors with `normalizeError()` so raw upstream text (paths/credentials) is never surfaced. Do not leak upstream messages.
-- **No framework additions without justification** — HTTP is `node:http`; keep the zero-runtime-framework + 2 runtime-dep footprint in mind.
+- **No framework additions without justification** — HTTP is `node:http`; the runtime dependencies are Codex CLI, Codex SDK, and Zod.
 - **Security properties are load-bearing** (do not weaken):
   - Timing-safe Bearer auth (`src/auth.ts`).
-  - Config/Codex-home kept outside workspaces; no overlap; no roots; symlink/junction/hardlink/cycle rejection (`config.ts`, `sandbox.ts`).
+  - Config/Codex home kept outside gateway workspaces; no overlap or filesystem roots. Existing internal symlinks/junctions are allowed by default; broken, external, cyclic, and hard links are rejected (`config.ts`, `sandbox.ts`).
   - Private dir/file modes 0700/0600 and Windows ACLs (`permissions.ts`, `cli.ts`).
   - Redaction of secrets + host paths in all output, streaming-safe (`redaction.ts`).
-  - Logging allowlists metadata only — never headers, bodies, keys, URLs with query (`logging.ts`).
-  - Isolation probe + native platform gate (`sandbox.ts`); `allowUnqualifiedWindowsExecution` is a documented opt-in.
+  - Normal terminal logs use allowlisted metadata and never include headers, bodies, keys, or URL queries. Explicit `serve --debug` can log bounded, recursively redacted request payloads and may still reveal private prompt content (`logging.ts`).
+  - Isolation probe + native platform gate (`sandbox.ts`); `allowUnqualifiedWindowsExecution` defaults to `true` on Windows and attempts execution without qualification probes. Linux/macOS keep per-generation probes.
+  - Remote workers authenticate with separate per-agent tokens. Remote shell runs with the worker OS account's full authority. Direct file tools' path checks are not a shell sandbox; `remote_write_file` currently resolves the parent path but can follow an existing symlink at the final filename. A timeout or disconnect may occur after a side effect.
 - **Comments justify non-obvious security/concurrency decisions** — keep that style when touching sensitive paths.
 
 ## Build & test commands (verified from package.json)
@@ -104,14 +106,15 @@ npm run aiclitoaiapi   # tsx src/cli.ts (dev)
 ## Development constraints
 
 - **Do not bump or loosen the pinned Codex runtime version** (`0.155.0`) or the skill-bundle list in `src/providers/runtime.ts` without re-running protocol/permission/sandbox qualification.
-- Keep the API **stateless** (no persistent session/thread resumption) and one shared gateway key semantics.
-- Do not add log statements that can emit request/response bodies, auth headers, config paths, keys, or queries.
-- Respect "no fake streaming" rule: only emit real deltas; if Codex gives only buffered output, return `stream_unavailable` (502), don't synthesize tokens.
+- Keep client-supplied conversation history authoritative and preserve the bounded, one-use Codex tool continuation. Do not add persistent conversation/session APIs without an explicit design change. One shared gateway key grants all configured gateway workspaces; remote workers use separate agent tokens.
+- Do not add normal log statements that emit request/response bodies, auth headers, config paths, keys, or queries. Treat explicit debug payload logging separately and keep its redaction and bounds.
+- Respect "no fake streaming" for Codex: emit real final-answer deltas only; buffered-only Codex text returns `stream_unavailable` (502) for streaming requests. Review Antigravity's JSON-schema bridge separately because it emits a buffered completion as one delta.
 - Windows native execution is **unqualified** by default (`allowUnqualifiedWindowsExecution` defaults `true`); code paths must keep probing on Linux/macOS.
-- Keep secrets out of version control; `aiclitoaiapi.example.json` holds placeholders only.
+- Keep secrets out of version control; both gateway and remote-agent example JSON files hold placeholders only.
 
 ## Assumptions / unverified (not treated as fact)
 
-- Whether the Antigravity `agy` provider path is fully exercised end-to-end in this environment (no `agy` binary execution verified here).
-- Exact runtime behavior differences of Codex 0.155.0 on each OS (only protocol surface and code behavior reviewed; cross-platform live execution not verified here).
-- Deployment/ops specifics beyond `docs/` (reverse proxy, TLS termination) — documented in `README.md`/`docs/security.md` but not tested in this analysis.
+- Antigravity discovery, generation, and tool bridge have source and unit coverage; an authenticated end-to-end `agy` run was not established by this analysis.
+- The remote broker and worker have unit/HTTP coverage, but this analysis does not establish live operation across two physical hosts or full remote shell confinement.
+- Codex 0.155.0 behavior across all supported operating systems and authenticated live tool execution has not been qualified here. Historical claims in `docs/verification.md` should be read with their dates and scope.
+- Deployment details such as reverse proxy and TLS termination are documented in `README.md` and `docs/security.md`; they were not tested in this analysis.

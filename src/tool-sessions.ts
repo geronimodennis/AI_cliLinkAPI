@@ -28,5 +28,13 @@ export class ToolSessions<T> {
     clearTimeout(entry.timer); this.entries.delete(last.tool_call_id);
     return { value: entry.value, result: last.content };
   }
+  async discardWorkspace(workspace: string) {
+    const discarded: T[] = [];
+    for (const [id, entry] of this.entries) {
+      if (entry.workspace !== workspace) continue;
+      clearTimeout(entry.timer); this.entries.delete(id); discarded.push(entry.value);
+    }
+    await Promise.all(discarded.map(value => this.close(value)));
+  }
   async closeAll() { const entries = [...this.entries.values()]; this.entries.clear(); for (const e of entries) clearTimeout(e.timer); await Promise.all(entries.map(e => this.close(e.value))); }
 }

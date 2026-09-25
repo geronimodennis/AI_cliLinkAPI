@@ -95,7 +95,6 @@ export class CodexProvider implements Provider {
   async *generate(input: Generation): AsyncGenerator<GenerationEvent> {
     requireNativePlatform(this.config.provider.allowUnqualifiedWindowsExecution);
     const resumed = this.tools.take(input);
-    if (!resumed && this.tools.hasWorkspace(input.workspace.path)) throw new AIcliToAIapiError(409, 'workspace_busy', 'Workspace is waiting for an external tool result.');
     if (resumed) {
       let retained = false;
       try {
@@ -104,6 +103,10 @@ export class CodexProvider implements Provider {
       } finally { if (!retained) await this.dispose(resumed.value.rpc); }
       return;
     }
+    // A tool-call response may be abandoned when a client cancels, retries, or
+    // starts a new stateless conversation. Dispose that retained runtime before
+    // opening the fresh request so the workspace is not blocked until the TTL.
+    if (this.tools.hasWorkspace(input.workspace.path)) await this.tools.discardWorkspace(input.workspace.path);
     const projectSkills = await inspectWorkspace(input.workspace, this.config.provider.allowSymbolicLinks);
     const rpc = await this.open(input.signal, [...profileArgs(input.workspace, [this.filename, this.config.provider.codexHome]), ...disabledSkillArgs(this.config.provider.codexHome, projectSkills, this.config.provider.allowProjectSkills)]);
     let threadId: string | undefined; let turnId: string | undefined; let retained = false;

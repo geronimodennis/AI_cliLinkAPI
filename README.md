@@ -6,7 +6,7 @@ Upgrading from an earlier name: existing private configuration and credentials a
 
 [npm package](https://www.npmjs.com/package/aiclitoaiapi) · [GitHub repository](https://github.com/geronimodennis/AIcliToAIapi) · [Report an issue](https://github.com/geronimodennis/AIcliToAIapi/issues)
 
-Native Node.js/strict TypeScript gateway for a **ChatGPT-authenticated Codex** runtime, with optional official Google Antigravity CLI (`agy`) providers. The aiclitoaiapi key protects this HTTP service; it is not an OpenAI API key. No containers, VMs, direct OpenAI API client, browser-cookie extraction, or unofficial ChatGPT endpoints are used.
+Native Node.js/strict TypeScript gateway that exposes an OpenAI-compatible Chat Completions API through a **ChatGPT-authenticated Codex** runtime and optional official Google Antigravity CLI (`agy`) providers. It supports client-executed function calls and outbound remote workers with persistent coding workspaces. For coding requests, gateway instructions direct the model to discover the current client or remote workspace with the available tools before relying on earlier context. The aiclitoaiapi key protects this HTTP service; it is not an OpenAI API key. No containers, VMs, direct OpenAI API client, browser-cookie extraction, or unofficial ChatGPT endpoints are used.
 
 ## Multiple providers
 

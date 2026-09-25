@@ -1,7 +1,7 @@
 {
   "name": "aiclitoaiapi",
-  "version": "0.1.13",
-  "description": "Native CLI gateway for a ChatGPT-authenticated Codex runtime.",
+  "version": "0.1.14",
+  "description": "OpenAI-compatible Codex and Antigravity CLI gateway with function tools and remote coding workspaces.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/geronimodennis/AIcliToAIapi.git"
