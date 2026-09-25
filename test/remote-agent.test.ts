@@ -18,13 +18,13 @@ test('remote broker correlates one bounded workspace task and result', async () 
 test('remote worker keeps file state in its configured workspace', async () => {
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-remote-'));
   try {
-    const config = remoteWorkerConfigSchema.parse({ gatewayUrl: 'http://127.0.0.1:3000', agentId: 'agent', token: 'x'.repeat(32), workspaceId: 'project', workspace, maxOutputBytes: 1024, handlers: { custom_echo: { command: process.execPath, args: ['-e', 'process.stdin.pipe(process.stdout)'] } } });
-    await executeRemoteTask(config, { id: 'one', workspace: 'project', created_at: Date.now(), call: call('write_file', { path: 'state.txt', content: 'persistent' }) });
-    const text = await executeRemoteTask(config, { id: 'two', workspace: 'project', created_at: Date.now(), call: call('read_file', { path: 'state.txt' }) });
+    const config = remoteWorkerConfigSchema.parse({ gatewayUrl: 'http://127.0.0.1:3000', agentId: 'agent', token: 'x'.repeat(32), workspaceId: 'project', workspace, maxOutputBytes: 1024, handlers: { remote_custom_echo: { command: process.execPath, args: ['-e', 'process.stdin.pipe(process.stdout)'] } } });
+    await executeRemoteTask(config, { id: 'one', workspace: 'project', created_at: Date.now(), call: call('remote_write_file', { path: 'state.txt', content: 'persistent' }) });
+    const text = await executeRemoteTask(config, { id: 'two', workspace: 'project', created_at: Date.now(), call: call('remote_read_file', { path: 'state.txt' }) });
     assert.equal(text, 'persistent'); assert.equal(await readFile(path.join(workspace, 'state.txt'), 'utf8'), 'persistent');
-    const custom = await executeRemoteTask(config, { id: 'custom', workspace: 'project', created_at: Date.now(), call: call('custom_echo', { value: 'from-client' }) });
+    const custom = await executeRemoteTask(config, { id: 'custom', workspace: 'project', created_at: Date.now(), call: call('remote_custom_echo', { value: 'from-client' }) });
     assert.deepEqual(JSON.parse(custom), { value: 'from-client' });
-    assert.ok(remoteBuiltinTools.some(tool => tool.function.name === 'shell_execute'));
+    assert.ok(remoteBuiltinTools.some(tool => tool.function.name === 'remote_shell_execute'));
     await assert.rejects(executeRemoteTask(config, { id: 'bad', workspace: 'other', created_at: Date.now(), call: call('read_file', { path: 'state.txt' }) }), /targets remote workspace/);
   } finally { await rm(workspace, { recursive: true, force: true }); }
 });

@@ -5,7 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import os from 'node:os';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from '../src/server.js';
 import { parseConfig } from '../src/config.js';
 import type { Provider, Generation, GenerationEvent } from '../src/providers/types.js';
@@ -45,13 +45,15 @@ class Fake implements Provider {
   lastInput: Generation | undefined;
   cleanupDelay = 0;
   cleanupComplete = true;
-  mode: 'ok' | 'wait' | 'error' | 'buffered' | 'malformed' | 'tools' = 'ok';
+  mode: 'ok' | 'wait' | 'error' | 'buffered' | 'malformed' | 'tools' | 'remote-tools' | 'remote-custom' = 'ok';
   async models() { this.modelCalls++; return [{ id: 'test-model', efforts: ['low'], defaultEffort: 'low', isDefault: true, capabilities: { chat_completions: true, streaming: true, reasoning: true, external_tools: true } }]; }
   async *generate(input: Generation): AsyncGenerator<GenerationEvent> {
     this.calls++;
     this.lastInput = input;
     this.cleanupComplete = false;
     if (this.mode === 'tools' && input.request?.messages.at(-1)?.role !== 'tool') { yield { type: 'tool_calls', calls: [{ id: 'call_test', type: 'function', function: { name: 'weather', arguments: '{"city":"Taipei"}' } }] }; return; }
+    if (this.mode === 'remote-tools' && input.request?.messages.at(-1)?.role !== 'tool') { yield { type: 'tool_calls', calls: [{ id: 'call_remote', type: 'function', function: { name: 'remote_read_file', arguments: '{"path":"source.txt"}' } }] }; return; }
+    if (this.mode === 'remote-custom' && input.request?.messages.at(-1)?.role !== 'tool') { yield { type: 'tool_calls', calls: [{ id: 'call_remote_custom', type: 'function', function: { name: 'remote_weather', arguments: '{"city":"Taipei"}' } }] }; return; }
     if (this.mode === 'error') throw new AIcliToAIapiError(429, 'upstream_rate_limit', 'Codex usage limit reached.');
     if (this.mode === 'malformed') return;
     if (this.mode === 'wait') { try { await delay(10000, undefined, { signal: input.signal }); } catch { this.cancelled = true; throw new Error('cancelled'); } }
@@ -127,33 +129,61 @@ test('n8n-style tool round trip and streaming tool-call framing', async () => {
 });
 test('remote agent authenticates, executes a model tool call, and resumes the same response', async () => {
   const token = 'r'.repeat(43);
-  const f = await fixture('tools', 5000, undefined, [{ id: 'worker', token }]);
+  const f = await fixture('remote-tools', 5000, undefined, [{ id: 'worker', token }]);
   const agentHeaders = { authorization: `Bearer ${token}`, 'x-remote-agent-id': 'worker' };
   try {
     assert.equal((await fetch(f.base + '/v1/remote-agents/tasks', { headers: { ...agentHeaders, authorization: 'Bearer wrong' }, signal: AbortSignal.timeout(1000) })).status, 401);
-    const completion = f.send({ messages: [{ role: 'user', content: 'Weather?' }], tools: [{ type: 'function', function: { name: 'weather', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }] }, { 'x-remote-agent-id': 'worker', 'x-remote-workspace-id': 'project' });
+    const completion = f.send({ messages: [{ role: 'user', content: 'Weather?' }], tools: [{ type: 'function', function: { name: 'weather', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }, { type: 'function', function: { name: 'read_file', description: 'Conflicting client tool', parameters: { type: 'object', properties: {} } } }] }, { 'x-remote-agent-id': 'worker', 'x-remote-workspace-id': 'project' });
     const taskResponse = await fetch(f.base + '/v1/remote-agents/tasks', { headers: agentHeaders });
     assert.equal(taskResponse.status, 200);
     const { task } = await taskResponse.json() as { task: { id: string; workspace: string; call: { function: { name: string } } } };
-    assert.equal(task.workspace, 'project'); assert.equal(task.call.function.name, 'weather');
-    const resultResponse = await fetch(f.base + '/v1/remote-agents/results', { method: 'POST', headers: { ...agentHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: task.id, result: 'Sunny in Taipei' }) });
+    assert.equal(task.workspace, 'project'); assert.equal(task.call.function.name, 'remote_read_file');
+    const resultResponse = await fetch(f.base + '/v1/remote-agents/results', { method: 'POST', headers: { ...agentHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: task.id, result: 'remote file contents' }) });
     assert.equal(resultResponse.status, 200);
     const completed = await completion; assert.equal(completed.status, 200);
     const body = await completed.json(); assert.equal(body.choices[0].finish_reason, 'stop'); assert.equal(body.choices[0].message.content, 'Actual fixture result');
     assert.equal(f.provider.lastInput!.request!.messages.at(-1)!.role, 'tool');
+    assert.ok(f.provider.lastInput!.request!.tools!.some(tool => tool.function.name === 'remote_read_file'));
     assert.ok(f.provider.lastInput!.request!.tools!.some(tool => tool.function.name === 'read_file'));
+    assert.match(f.provider.lastInput!.instructions, /All configured execution paths are enabled/); assert.match(f.provider.lastInput!.instructions, /remote_read_file/);
+    assert.deepEqual(f.provider.lastInput!.workspace.capabilities, { fileRead: true, fileWrite: true, shell: true, sandbox: false });
     const catalog = await (await fetch(f.base + '/v1/models', { headers: { ...f.headers, 'x-remote-agent-id': 'worker' } })).json();
     assert.equal(catalog.data[0].capabilities.workspace_remote, true); assert.equal(catalog.data[0].capabilities.remote_builtin_tools, true);
   } finally { await f.close(); }
 });
-test('remote worker loop polls, runs a registered client tool, and delivers its result', async () => {
-  const token = 'w'.repeat(43); const workspace = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-http-worker-'));
-  const f = await fixture('tools', 5000, undefined, [{ id: 'worker', token }]); const controller = new AbortController();
+test('remote mode returns ordinary client tool calls to OpenCode', async () => {
+  const token = 'o'.repeat(43);
+  const f = await fixture('tools', 5000, undefined, [{ id: 'worker', token }]);
   try {
-    const worker = runRemoteWorker(remoteWorkerConfigSchema.parse({ gatewayUrl: f.base, agentId: 'worker', token, workspaceId: 'project', workspace, handlers: { weather: { command: process.execPath, args: ['-e', 'process.stdin.pipe(process.stdout)'] } } }), controller.signal);
     const response = await f.send({ messages: [{ role: 'user', content: 'Weather?' }], tools: [{ type: 'function', function: { name: 'weather', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }] }, { 'x-remote-agent-id': 'worker', 'x-remote-workspace-id': 'project' });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.choices[0].finish_reason, 'tool_calls');
+    assert.equal(body.choices[0].message.tool_calls[0].function.name, 'weather');
+    assert.match(f.provider.lastInput!.instructions, /executed by the API client/);
+  } finally { await f.close(); }
+});
+test('remote worker loop polls, runs a registered remote custom tool, and delivers its result', async () => {
+  const token = 'w'.repeat(43); const workspace = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-http-worker-'));
+  const f = await fixture('remote-custom', 5000, undefined, [{ id: 'worker', token }]); const controller = new AbortController();
+  try {
+    const worker = runRemoteWorker(remoteWorkerConfigSchema.parse({ gatewayUrl: f.base, agentId: 'worker', token, workspaceId: 'project', workspace, handlers: { remote_weather: { command: process.execPath, args: ['-e', 'process.stdin.pipe(process.stdout)'] } } }), controller.signal);
+    const response = await f.send({ messages: [{ role: 'user', content: 'Weather?' }], tools: [{ type: 'function', function: { name: 'remote_weather', parameters: { type: 'object', properties: { city: { type: 'string' } } } } }] }, { 'x-remote-agent-id': 'worker', 'x-remote-workspace-id': 'project' });
     assert.equal(response.status, 200); assert.equal((await response.json()).choices[0].finish_reason, 'stop');
     const result = f.provider.lastInput!.request!.messages.at(-1)!; assert.equal(result.role, 'tool'); assert.match(result.content as string, /Taipei/);
+    controller.abort(); await worker;
+  } finally { controller.abort(); await f.close(); await rm(workspace, { recursive: true, force: true }); }
+});
+test('remote built-in file tool executes on the worker workspace and resumes the model', async () => {
+  const token = 'b'.repeat(43); const workspace = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-http-builtin-'));
+  await writeFile(path.join(workspace, 'source.txt'), 'remote repository contents', 'utf8');
+  const f = await fixture('remote-tools', 5000, undefined, [{ id: 'worker', token }]); const controller = new AbortController();
+  try {
+    const worker = runRemoteWorker(remoteWorkerConfigSchema.parse({ gatewayUrl: f.base, agentId: 'worker', token, workspaceId: 'project', workspace }), controller.signal);
+    const response = await f.send({ messages: [{ role: 'user', content: 'Read source.txt' }] }, { 'x-remote-agent-id': 'worker', 'x-remote-workspace-id': 'project' });
+    assert.equal(response.status, 200); await response.json();
+    const result = f.provider.lastInput!.request!.messages.at(-1)!; assert.equal(result.role, 'tool'); assert.equal(result.content, 'remote repository contents');
+    assert.match(f.provider.lastInput!.instructions, /Provider-native filesystem and shell tools/); assert.match(f.provider.lastInput!.instructions, /remote_read_file/);
     controller.abort(); await worker;
   } finally { controller.abort(); await f.close(); await rm(workspace, { recursive: true, force: true }); }
 });
@@ -161,7 +191,8 @@ test('HTTP returns provider response and observed usage, models carry supported 
   const f = await fixture();
   try {
     const r = await f.send(); assert.equal(r.status, 200); const body = await r.json(); assert.equal(body.choices[0].message.content, 'Actual fixture result'); assert.equal(body.usage.total_tokens, 5);
-    const models = await fetch(f.base + '/v1/models', { headers: f.headers }); const catalog = await models.json(); assert.equal(catalog.data[0].id, 'test-model'); assert.deepEqual(catalog.data[0].capabilities, { chat_completions: true, streaming: true, reasoning: true, external_tools: true, workspace_file_read: false, workspace_file_write: false, workspace_shell: false, sandbox: false, workspace_remote: false, remote_builtin_tools: false, remote_custom_tools: false });
+    const models = await fetch(f.base + '/v1/models', { headers: f.headers }); const catalog = await models.json(); assert.equal(catalog.data[0].id, 'test-model'); assert.deepEqual(catalog.data[0].capabilities, { chat_completions: true, streaming: true, reasoning: true, external_tools: true, workspace_file_read: true, workspace_file_write: false, workspace_shell: true, sandbox: false, workspace_remote: false, remote_builtin_tools: false, remote_custom_tools: false });
+    assert.deepEqual(f.provider.lastInput!.workspace.capabilities, { fileRead: true, fileWrite: true, shell: true, sandbox: false });
     assert.ok(!JSON.stringify(f.logs).includes(key)); assert.ok(!JSON.stringify(f.logs).includes('Hello'));
   } finally { await f.close(); }
 });

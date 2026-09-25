@@ -13,19 +13,19 @@ const handler = z.strictObject({ command: z.string().min(1), args: z.array(z.str
 export const remoteWorkerConfigSchema = z.strictObject({
   gatewayUrl: z.string().url(), agentId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), token: z.string().min(32),
   workspaceId: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), workspace: z.string().min(1),
-  handlers: z.record(z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/), handler).default({}),
+  handlers: z.record(z.string().regex(/^remote_[a-zA-Z0-9_-]{1,57}$/), handler).default({}),
   timeoutMs: z.number().int().min(1000).max(1800000).default(300000), maxOutputBytes: z.number().int().min(1024).max(10485760).default(1048576)
 });
 export type RemoteWorkerConfig = z.infer<typeof remoteWorkerConfigSchema>;
 const builtin = (name: string, description: string, properties: Record<string, unknown>, required: string[] = []) => ({ type: 'function' as const, function: { name, description, parameters: { type: 'object', properties, required, additionalProperties: false } } });
 export const remoteBuiltinTools = [
-  builtin('read_file', 'Read a UTF-8 file in the remote workspace.', { path: { type: 'string' } }, ['path']),
-  builtin('write_file', 'Write a UTF-8 file in the remote workspace.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content']),
-  builtin('list_directory', 'List a directory in the remote workspace.', { path: { type: 'string', default: '.' } }),
-  builtin('search_files', 'Search UTF-8 workspace files for a text or regular-expression pattern.', { pattern: { type: 'string' }, path: { type: 'string', default: '.' }, regex: { type: 'boolean', default: false } }, ['pattern']),
-  builtin('shell_execute', 'Execute a shell command with the persistent remote workspace as cwd.', { command: { type: 'string' }, timeoutMs: { type: 'integer' } }, ['command']),
-  builtin('git_status', 'Run git status in the remote workspace.', {}), builtin('git_diff', 'Run git diff in the remote workspace.', { staged: { type: 'boolean', default: false } }),
-  builtin('git_log', 'Read recent Git commits in the remote workspace.', { limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 } })
+  builtin('remote_read_file', 'Read a UTF-8 file from the connected remote workspace.', { path: { type: 'string' } }, ['path']),
+  builtin('remote_write_file', 'Write a UTF-8 file in the connected remote workspace.', { path: { type: 'string' }, content: { type: 'string' } }, ['path', 'content']),
+  builtin('remote_list_directory', 'List a directory in the connected remote workspace.', { path: { type: 'string', default: '.' } }),
+  builtin('remote_search_files', 'Search UTF-8 files in the connected remote workspace.', { pattern: { type: 'string' }, path: { type: 'string', default: '.' }, regex: { type: 'boolean', default: false } }, ['pattern']),
+  builtin('remote_shell_execute', 'Execute a shell command with the connected persistent remote workspace as cwd.', { command: { type: 'string' }, timeoutMs: { type: 'integer' } }, ['command']),
+  builtin('remote_git_status', 'Run git status in the connected remote workspace.', {}), builtin('remote_git_diff', 'Run git diff in the connected remote workspace.', { staged: { type: 'boolean', default: false } }),
+  builtin('remote_git_log', 'Read recent Git commits in the connected remote workspace.', { limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 } })
 ];
 const objectArgs = (text: string) => { const value: unknown = JSON.parse(text); if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Tool arguments must be a JSON object.'); return value as Record<string, unknown>; };
 const textArg = (args: Record<string, unknown>, key: string, fallback?: string) => { const value = args[key] ?? fallback; if (typeof value !== 'string') throw new Error(`${key} must be a string.`); return value; };
@@ -54,7 +54,10 @@ async function runHandler(config: RemoteWorkerConfig, name: string, args: Record
 export async function executeRemoteTask(config: RemoteWorkerConfig, task: RemoteTask): Promise<string> {
   if (task.workspace !== config.workspaceId) throw new Error(`Task targets remote workspace ${task.workspace}, not ${config.workspaceId}.`);
   const root = await realpath(config.workspace); if (!(await stat(root)).isDirectory()) throw new Error('Remote workspace must be a directory.');
-  const args = objectArgs(task.call.function.arguments); const name = task.call.function.name;
+  const args = objectArgs(task.call.function.arguments); const requestedName = task.call.function.name;
+  // Keep accepting the original unprefixed names for queued tasks and older
+  // gateways, while publishing only collision-free remote_* names to models.
+  const name = requestedName.startsWith('remote_') ? requestedName.slice('remote_'.length) : requestedName;
   if (name === 'read_file') return boundedText(await readFile(await confined(root, textArg(args, 'path')), 'utf8'), config.maxOutputBytes);
   if (name === 'write_file') { const file = await confined(root, textArg(args, 'path'), true); const content = textArg(args, 'content'); await writeFile(file, content, 'utf8'); return `Wrote ${Buffer.byteLength(content)} bytes.`; }
   if (name === 'list_directory') { const directory = await confined(root, textArg(args, 'path', '.')); return boundedText((await readdir(directory, { withFileTypes: true })).map(entry => `${entry.isDirectory() ? 'd' : 'f'} ${entry.name}`).join('\n'), config.maxOutputBytes); }
@@ -88,7 +91,7 @@ export async function executeRemoteTask(config: RemoteWorkerConfig, task: Remote
   if (name === 'git_status') return await runProcess('git', ['status', '--short'], root, config.timeoutMs, config.maxOutputBytes);
   if (name === 'git_diff') return await runProcess('git', ['diff', ...(args.staged === true ? ['--staged'] : [])], root, config.timeoutMs, config.maxOutputBytes);
   if (name === 'git_log') return await runProcess('git', ['log', '--oneline', `-${Math.min(typeof args.limit === 'number' ? args.limit : 20, 100)}`], root, config.timeoutMs, config.maxOutputBytes);
-  return await runHandler(config, name, args);
+  return await runHandler(config, requestedName, args);
 }
 export async function runRemoteWorker(config: RemoteWorkerConfig, signal: AbortSignal): Promise<void> {
   const base = config.gatewayUrl.replace(/\/$/, ''); const headers = { authorization: `Bearer ${config.token}`, 'x-remote-agent-id': config.agentId };

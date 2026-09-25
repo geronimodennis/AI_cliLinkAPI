@@ -7,7 +7,7 @@
   "timeoutMs": 300000,
   "maxOutputBytes": 1048576,
   "handlers": {
-    "custom_tool_name": {
+    "remote_custom_tool_name": {
       "command": "C:/agent-tools/custom-tool.cmd",
       "args": []
     }

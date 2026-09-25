@@ -26,9 +26,16 @@ async function sse(response: ServerResponse, body: unknown, signal: AbortSignal)
   if (!response.write(`data: ${typeof body === 'string' ? body : JSON.stringify(body)}\n\n`)) await once(response, 'drain', { signal });
 }
 export function createServer(config: Config, provider: Provider, log: (value: Record<string, unknown>) => void = terminalRequestLog, debugPayload = false) {
+  const enabledWorkspace = (workspace: Config['workspaces'][string]): Config['workspaces'][string] => ({
+    ...workspace,
+    capabilities: { fileRead: true, fileWrite: true, shell: true, sandbox: false, ...workspace.capabilities }
+  });
+  const remoteInstructions = (workspace: string) => `This request is connected to persistent remote workspace ${workspace}. All configured execution paths are enabled. Provider-native filesystem and shell tools operate on the gateway workspace. For the connected remote workspace, use remote_read_file, remote_write_file, remote_list_directory, remote_search_files, remote_shell_execute, remote_git_status, remote_git_diff, and remote_git_log. Client-defined functions without the remote_ prefix are executed by the API client (for example OpenCode) through the normal tool-call continuation. Functions beginning with remote_ are executed by the connected remote worker. Do not claim that tools or code-mode hosts are unavailable before attempting the appropriate registered tool.`;
+  const withRemoteInstructions = (instructions: string, workspace: string) => [instructions, remoteInstructions(workspace)].filter(Boolean).join('\n\n');
   const modelResponse = (model: Awaited<ReturnType<Provider['models']>>[number], workspace: Config['workspaces'][string] | undefined, remote = false) => {
-    const fileRead = remote || workspace?.capabilities?.fileRead === true;
-    const fileWrite = remote || (fileRead && workspace?.access === 'read-write' && workspace.capabilities?.fileWrite === true);
+    const effective = workspace ? enabledWorkspace(workspace) : undefined;
+    const fileRead = remote || effective?.capabilities?.fileRead === true;
+    const fileWrite = remote || (fileRead && effective?.access === 'read-write' && effective.capabilities?.fileWrite === true);
     return {
       id: model.id,
       object: 'model',
@@ -38,8 +45,8 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
         ...model.capabilities,
         workspace_file_read: fileRead,
         workspace_file_write: fileWrite,
-        workspace_shell: remote || workspace?.capabilities?.shell === true,
-        sandbox: workspace?.capabilities?.sandbox === true,
+        workspace_shell: remote || effective?.capabilities?.shell === true,
+        sandbox: effective?.capabilities?.sandbox === true,
         workspace_remote: remote,
         remote_builtin_tools: remote,
         remote_custom_tools: remote
@@ -55,10 +62,15 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
       let continued = false;
       for await (const event of provider.generate(current)) {
         if (event.type !== 'tool_calls') { yield event; if (event.type === 'complete') return; continue; }
-        if (event.calls.length !== 1) throw new AIcliToAIapiError(502, 'remote_parallel_tools_unsupported', 'Remote agent continuation currently requires exactly one tool call at a time.');
+        const remoteCalls = event.calls.filter(call => call.function.name.startsWith('remote_'));
+        // Client-defined functions remain ordinary OpenAI tool calls so clients
+        // such as OpenCode execute them and return their results in messages.
+        if (!remoteCalls.length) { yield event; return; }
+        if (remoteCalls.length !== event.calls.length || remoteCalls.length !== 1) throw new AIcliToAIapiError(502, 'remote_parallel_tools_unsupported', 'A remote-agent round must contain exactly one remote_* tool call and cannot mix remote and client tools.');
         const results = await Promise.all(event.calls.map(call => remoteAgents.execute(agentId, remoteWorkspace, call, current.signal)));
         const messages = [...current.request!.messages, { role: 'assistant' as const, content: null, tool_calls: event.calls }, ...event.calls.map((call, index) => ({ role: 'tool' as const, tool_call_id: call.id, content: results[index]! }))];
-        current = { ...current, request: { ...current.request!, messages }, ...translate(messages) };
+        const translated = translate(messages);
+        current = { ...current, request: { ...current.request!, messages }, ...translated, instructions: withRemoteInstructions(translated.instructions, remoteWorkspace) };
         continued = true; break;
       }
       if (!continued) return;
@@ -143,8 +155,9 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
       const chunk = (delta: Record<string, unknown>, finish: string | null = null) => ({ ...base, object: 'chat.completion.chunk', choices: [{ index: 0, delta, finish_reason: finish }] });
       const redactor = new Redactor([config.auth.apiKey, config.provider.codexHome, os.homedir(), ...Object.values(config.workspaces).map(w => w.path)]);
       let complete = false; let receivedDelta = false; let finalBody: unknown;
-      const executionWorkspace = typeof remoteAgentId === 'string' ? { ...workspace, access: 'read-only' as const, capabilities: { fileRead: false, fileWrite: false, shell: false, sandbox: true } } : workspace;
-      const generation = { ...selected, ...translate(parsed.messages), workspace: executionWorkspace, signal, request: parsed };
+      const executionWorkspace = enabledWorkspace(workspace);
+      const translated = translate(parsed.messages);
+      const generation = { ...selected, ...translated, ...(typeof remoteAgentId === 'string' ? { instructions: withRemoteInstructions(translated.instructions, typeof remoteWorkspace === 'string' ? remoteWorkspace : remoteAgentId) } : {}), workspace: executionWorkspace, signal, request: parsed };
       const events = typeof remoteAgentId === 'string' ? generateWithRemoteAgent(generation, remoteAgentId, typeof remoteWorkspace === 'string' ? remoteWorkspace : remoteAgentId) : provider.generate(generation);
       for await (const event of events) {
         signal.throwIfAborted();
