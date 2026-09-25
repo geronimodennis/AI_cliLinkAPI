@@ -119,6 +119,8 @@ test('n8n-style tool round trip and streaming tool-call framing', async () => {
     const first = await (await f.send({ messages, tools, temperature: 0.7, max_tokens: 1000 })).json();
     assert.deepEqual(f.provider.lastInput!.request!.tools![0]!.function.parameters, tools[0]!.function.parameters);
     assert.ok(!Object.hasOwn(f.provider.lastInput!.request!.tools![0]!.function, 'strict'));
+    assert.match(f.provider.lastInput!.instructions, /Client-supplied functions registered for this request: weather/);
+    assert.match(f.provider.lastInput!.instructions, /call it before attempting any provider-native or code-mode tool/);
     assert.equal(first.choices[0].finish_reason, 'tool_calls');
     const assistant = first.choices[0].message; assert.equal(assistant.content, null);
     const next = await (await f.send({ tools, messages: [...messages, assistant, { role: 'tool', tool_call_id: assistant.tool_calls[0].id, content: 'Sunny' }] })).json();
@@ -145,7 +147,7 @@ test('remote agent authenticates, executes a model tool call, and resumes the sa
     assert.equal(f.provider.lastInput!.request!.messages.at(-1)!.role, 'tool');
     assert.ok(f.provider.lastInput!.request!.tools!.some(tool => tool.function.name === 'remote_read_file'));
     assert.ok(f.provider.lastInput!.request!.tools!.some(tool => tool.function.name === 'read_file'));
-    assert.match(f.provider.lastInput!.instructions, /All configured execution paths are enabled/); assert.match(f.provider.lastInput!.instructions, /remote_read_file/);
+    assert.match(f.provider.lastInput!.instructions, /Client-supplied functions registered for this request: weather, read_file/); assert.match(f.provider.lastInput!.instructions, /remote_read_file/);
     assert.deepEqual(f.provider.lastInput!.workspace.capabilities, { fileRead: true, fileWrite: true, shell: true, sandbox: false });
     const catalog = await (await fetch(f.base + '/v1/models', { headers: { ...f.headers, 'x-remote-agent-id': 'worker' } })).json();
     assert.equal(catalog.data[0].capabilities.workspace_remote, true); assert.equal(catalog.data[0].capabilities.remote_builtin_tools, true);
@@ -160,7 +162,7 @@ test('remote mode returns ordinary client tool calls to OpenCode', async () => {
     const body = await response.json();
     assert.equal(body.choices[0].finish_reason, 'tool_calls');
     assert.equal(body.choices[0].message.tool_calls[0].function.name, 'weather');
-    assert.match(f.provider.lastInput!.instructions, /executed by the API client/);
+    assert.match(f.provider.lastInput!.instructions, /execute on the requesting API client's computer/);
   } finally { await f.close(); }
 });
 test('remote worker loop polls, runs a registered remote custom tool, and delivers its result', async () => {
@@ -183,7 +185,7 @@ test('remote built-in file tool executes on the worker workspace and resumes the
     const response = await f.send({ messages: [{ role: 'user', content: 'Read source.txt' }] }, { 'x-remote-agent-id': 'worker', 'x-remote-workspace-id': 'project' });
     assert.equal(response.status, 200); await response.json();
     const result = f.provider.lastInput!.request!.messages.at(-1)!; assert.equal(result.role, 'tool'); assert.equal(result.content, 'remote repository contents');
-    assert.match(f.provider.lastInput!.instructions, /Provider-native filesystem and shell tools/); assert.match(f.provider.lastInput!.instructions, /remote_read_file/);
+    assert.match(f.provider.lastInput!.instructions, /Provider-native filesystem and shell tools operate on the gateway computer/); assert.match(f.provider.lastInput!.instructions, /remote_read_file/);
     controller.abort(); await worker;
   } finally { controller.abort(); await f.close(); await rm(workspace, { recursive: true, force: true }); }
 });

@@ -3,10 +3,18 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm, symlink, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { verifyRuntime, verifyRuntimeHome, disabledSkillArgs } from '../src/providers/runtime.js';
+import { verifyRuntime, verifyRuntimeHome, disabledSkillArgs, hardeningArgs } from '../src/providers/runtime.js';
 import { Rpc } from '../src/providers/rpc.js';
 import { inspectWorkspace } from '../src/config.js';
 import { profileArgs } from '../src/sandbox.js';
+
+test('runtime enables the code-mode host required by client function tools', () => {
+  const settings = hardeningArgs.filter((value, index) => hardeningArgs[index - 1] === '-c');
+  assert.ok(settings.includes('features.code_mode=true'));
+  assert.ok(settings.includes('features.code_mode_host=true'));
+  assert.ok(!settings.includes('features.code_mode=false'));
+  assert.ok(!settings.includes('features.code_mode_host=false'));
+});
 
 for (const allowProjectSkills of [true, false]) test(`project skills allowed=${allowProjectSkills}, while config is ignored and links remain rejected`, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'aiclitoaiapi-project-'));

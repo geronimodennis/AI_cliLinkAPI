@@ -30,8 +30,13 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
     ...workspace,
     capabilities: { fileRead: true, fileWrite: true, shell: true, sandbox: false, ...workspace.capabilities }
   });
-  const remoteInstructions = (workspace: string) => `This request is connected to persistent remote workspace ${workspace}. All configured execution paths are enabled. Provider-native filesystem and shell tools operate on the gateway workspace. For the connected remote workspace, use remote_read_file, remote_write_file, remote_list_directory, remote_search_files, remote_shell_execute, remote_git_status, remote_git_diff, and remote_git_log. Client-defined functions without the remote_ prefix are executed by the API client (for example OpenCode) through the normal tool-call continuation. Functions beginning with remote_ are executed by the connected remote worker. Do not claim that tools or code-mode hosts are unavailable before attempting the appropriate registered tool.`;
-  const withRemoteInstructions = (instructions: string, workspace: string) => [instructions, remoteInstructions(workspace)].filter(Boolean).join('\n\n');
+  const clientToolInstructions = (request: Generation['request']) => {
+    const names = request?.tools?.map(tool => tool.function.name).filter(name => !name.startsWith('remote_')) ?? [];
+    if (!names.length) return '';
+    return `Client-supplied functions registered for this request: ${names.join(', ')}. These functions execute on the requesting API client's computer, which owns the client's project workspace. When a registered client function can perform the requested file, repository, search, edit, or shell operation, call it before attempting any provider-native or code-mode tool. Provider-native tools operate on the gateway computer and their host may be unavailable. Do not report that file or shell access is unavailable until you have attempted the appropriate registered client function.`;
+  };
+  const remoteInstructions = (workspace: string) => `This request is also connected to persistent remote workspace ${workspace}. For that workspace, use remote_read_file, remote_write_file, remote_list_directory, remote_search_files, remote_shell_execute, remote_git_status, remote_git_diff, and remote_git_log. Functions beginning with remote_ are executed by the connected remote worker. Provider-native filesystem and shell tools operate on the gateway computer, not the API client's project. Do not claim that tools are unavailable before attempting the appropriate registered client or remote_* function.`;
+  const executionInstructions = (instructions: string, request: Generation['request'], remoteWorkspace?: string) => [instructions, clientToolInstructions(request), ...(remoteWorkspace ? [remoteInstructions(remoteWorkspace)] : [])].filter(Boolean).join('\n\n');
   const modelResponse = (model: Awaited<ReturnType<Provider['models']>>[number], workspace: Config['workspaces'][string] | undefined, remote = false) => {
     const effective = workspace ? enabledWorkspace(workspace) : undefined;
     const fileRead = remote || effective?.capabilities?.fileRead === true;
@@ -70,7 +75,8 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
         const results = await Promise.all(event.calls.map(call => remoteAgents.execute(agentId, remoteWorkspace, call, current.signal)));
         const messages = [...current.request!.messages, { role: 'assistant' as const, content: null, tool_calls: event.calls }, ...event.calls.map((call, index) => ({ role: 'tool' as const, tool_call_id: call.id, content: results[index]! }))];
         const translated = translate(messages);
-        current = { ...current, request: { ...current.request!, messages }, ...translated, instructions: withRemoteInstructions(translated.instructions, remoteWorkspace) };
+        const nextRequest = { ...current.request!, messages };
+        current = { ...current, request: nextRequest, ...translated, instructions: executionInstructions(translated.instructions, nextRequest, remoteWorkspace) };
         continued = true; break;
       }
       if (!continued) return;
@@ -157,7 +163,7 @@ export function createServer(config: Config, provider: Provider, log: (value: Re
       let complete = false; let receivedDelta = false; let finalBody: unknown;
       const executionWorkspace = enabledWorkspace(workspace);
       const translated = translate(parsed.messages);
-      const generation = { ...selected, ...translated, ...(typeof remoteAgentId === 'string' ? { instructions: withRemoteInstructions(translated.instructions, typeof remoteWorkspace === 'string' ? remoteWorkspace : remoteAgentId) } : {}), workspace: executionWorkspace, signal, request: parsed };
+      const generation = { ...selected, ...translated, instructions: executionInstructions(translated.instructions, parsed, typeof remoteAgentId === 'string' ? (typeof remoteWorkspace === 'string' ? remoteWorkspace : remoteAgentId) : undefined), workspace: executionWorkspace, signal, request: parsed };
       const events = typeof remoteAgentId === 'string' ? generateWithRemoteAgent(generation, remoteAgentId, typeof remoteWorkspace === 'string' ? remoteWorkspace : remoteAgentId) : provider.generate(generation);
       for await (const event of events) {
         signal.throwIfAborted();
