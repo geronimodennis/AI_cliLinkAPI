@@ -22,7 +22,7 @@
 
 ```
 src/                 Application source (all .ts)
-  cli.ts             CLI commands: setup, secure-config, rotate-key, login, agy-login,
+  cli.ts             CLI commands: setup, secure-config, rotate-key, login,
                      providers, config, models, doctor, serve (bin entry: dist/src/cli.js)
   server.ts          HTTP server; routes /v1/models and /v1/chat/completions; SSE; timeouts
   config.ts          Zod config schema, path validation, workspace/symlink inspection

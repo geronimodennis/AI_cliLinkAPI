@@ -280,7 +280,7 @@ Sign in with `aiclitoaiapi login CONFIG`. The Codex provider must always be pres
 
 #### Antigravity CLI provider
 
-Install and authenticate the official `agy` CLI for the same OS account that runs the gateway. On Windows its standard executable location is `C:/Users/YOUR_USER/AppData/Local/agy/bin/agy.exe`; on macOS/Linux, use `"agy"` when it is on `PATH`, or an absolute executable path. Then run `aiclitoaiapi agy-login CONFIG antigravity` and confirm models with `aiclitoaiapi models CONFIG antigravity`.
+Install and authenticate the official `agy` CLI for the same OS account that runs the gateway. On Windows its standard executable location is `C:/Users/YOUR_USER/AppData/Local/agy/bin/agy.exe`; on macOS/Linux, use `"agy"` when it is on `PATH`, or an absolute executable path. Then run `aiclitoaiapi login CONFIG`, select Antigravity (and a provider ID when more than one is configured), and confirm models with `aiclitoaiapi models CONFIG antigravity`.
 
 | Setting | Default | Behavior |
 | --- | --- | --- |
@@ -616,7 +616,7 @@ This second request performs a real model call and can consume account usage. Do
 | `config [CONFIG] [--show-secrets]` | Display server, provider, compatibility, and workspace settings. The API key is redacted by default; pass `--show-secrets` only in a private terminal to display it once. |
 | `agent connect [AGENT_CONFIG]` | Connect the persistent remote-workspace worker. Defaults to `~/.aiclitoaiapi/remote-agent.json`. |
 | `secure-config CONFIG` | Repair permissions without rotating the key or changing configuration content |
-| `login CONFIG [--device-auth]` | Sign the dedicated runtime into ChatGPT |
+| `login [CONFIG] [--device-auth]` | Open the Codex/Antigravity/Cancel login wizard. Codex honors `--device-auth`; Cancel exits successfully without validating arguments. |
 | `doctor CONFIG` | Report platform mode and query the authenticated model catalog |
 | `serve CONFIG` | Start the gateway until stopped |
 | `rotate-key CONFIG` | Generate and atomically store a replacement gateway key |
@@ -664,6 +664,8 @@ The configuration directory must be dedicated and contain only the config file a
 | `504 remote_tool_timeout` | The configured remote worker did not return a result before `compatibility.toolTimeoutMs`. Confirm it is connected and that its tool process is responsive. |
 | `413 request_too_large` | Reduce the request body or raise `server.maxBodyBytes` within its allowed range. Existing configurations created before this change commonly use `262144`; use `1048576` or `4194304` for larger coding-assistant histories. |
 | `429` | Check the error code: local capacity and upstream usage limits require different remedies. Reduce concurrency or wait for account limits as appropriate. |
+| `429 upstream_rate_limit` from Antigravity | The model slug may still appear in `agy models`; discovery reports account-visible models, not remaining quota. Wait for Antigravity's quota reset or select a model/provider with available quota. |
+| `503 upstream_unavailable` from Antigravity | The slug resolved, but Antigravity reported no current serving capacity. Retry later or use another provider. |
 | `503 native_isolation_unavailable` | On Windows, check for explicit `allowUnqualifiedWindowsExecution: false`. On Linux/macOS, inspect native sandbox prerequisites/probes. Turning the Windows flag on does not fix native backend failures. |
 | Restricted-token/elevated sandbox error | The runtime cannot initialize the requested Windows permissions. The unqualified-execution flag skips qualification only; it does not remove the native permission profile. |
 | `503 upstream_authentication` | Run `login` again as the service account using the same config and dedicated home. |

@@ -16,10 +16,12 @@ const modelEffort = (model: string, configured: 'low' | 'medium' | 'high' | unde
   const suffix = model.match(/-(low|medium|high)$/)?.[1];
   return suffix === 'low' || suffix === 'medium' || suffix === 'high' ? suffix : (configured ?? 'medium');
 };
-const terminalFailure = (status: string | undefined, detail: string | undefined): AIcliToAIapiError => {
+export const terminalFailure = (status: string | undefined, detail: string | undefined): AIcliToAIapiError => {
   const text = detail ?? '';
-  if (/auth|login|credential|token|keyring/i.test(text)) return new AIcliToAIapiError(503, 'upstream_authentication', 'Antigravity CLI authentication is missing or expired. Run aiclitoaiapi agy-login with this provider ID.');
-  if (/model|unknown model|not recognized/i.test(text)) return new AIcliToAIapiError(400, 'unsupported_model', 'The requested Antigravity model is unavailable. Run aiclitoaiapi models to list available models.', 'model');
+  if (/auth|login|credential|token|keyring/i.test(text)) return new AIcliToAIapiError(503, 'upstream_authentication', 'Antigravity CLI authentication is missing or expired. Run aiclitoaiapi login and select Antigravity.');
+  if (/resource_exhausted|quota|rate[ _-]?limit|too many requests|\b429\b/i.test(text)) return new AIcliToAIapiError(429, 'upstream_rate_limit', 'Antigravity usage quota is exhausted. Wait for the quota to reset or use another provider.');
+  if (/no capacity|temporarily unavailable|\bunavailable\b.*\b503\b|\b503\b.*\bunavailable\b/i.test(text)) return new AIcliToAIapiError(503, 'upstream_unavailable', 'Antigravity currently has no serving capacity for this request. Retry later or use another provider.');
+  if (/invalid model selection|unknown model|unsupported model|not recognized as (?:a )?(?:known|custom) model/i.test(text)) return new AIcliToAIapiError(400, 'unsupported_model', 'The requested Antigravity model is unavailable. Run aiclitoaiapi models to list available models.', 'model');
   if (status === 'WAITING' || /permission|approval|sandbox/i.test(text)) return new AIcliToAIapiError(403, 'execution_denied', 'Antigravity CLI is waiting for tool permission. Enable the workspace capability required by this request and retry.');
   if (status === 'CANCELED' || status === 'INTERRUPTED') return new AIcliToAIapiError(499, 'cancelled', 'Antigravity CLI cancelled the request.');
   return new AIcliToAIapiError(502, 'upstream_error', 'Antigravity CLI did not complete the request. Check its local login and model configuration, then retry.');

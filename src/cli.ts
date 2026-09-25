@@ -41,8 +41,7 @@ const helpText = () => [
   '  setup [CONFIG] [TEMPLATE]             Create a private configuration or start the setup wizard.',
   '  secure-config CONFIG                  Repair configuration permissions.',
   '  rotate-key CONFIG                     Rotate the gateway API key.',
-  '  login CONFIG [--device-auth]          Sign in to the Codex provider.',
-  '  agy-login CONFIG PROVIDER_ID          Sign in to an Antigravity CLI provider.',
+  '  login [CONFIG] [--device-auth]        Choose Codex, Antigravity, or Cancel.',
   '  providers CONFIG                      List configured provider IDs.',
   '  config [CONFIG] [--show-secrets]       Show the active configuration.',
   '  models CONFIG [PROVIDER_ID]           List models grouped by provider, or one provider.',
@@ -137,6 +136,54 @@ const generatedSetupConfig = (filename: string, workspacePath = process.cwd(), d
   };
 };
 type SetupChoices = { login: 'codex' | 'antigravity' | 'both' | 'later'; workspacePath: string; defaultWorkspace: boolean; host: string };
+export type LoginSelection = 'codex' | 'antigravity' | 'cancel';
+export async function loginWizard(question: (prompt: string) => Promise<string>, write: (line: string) => void = console.log): Promise<LoginSelection> {
+  write(''); write('  PROVIDER SELECTION'); write('');
+  write('  1. Codex'); write('  2. Antigravity'); write('  3. Cancel'); write('');
+  while (true) {
+    const answer = (await question('  Select [3]: ')).trim() || '3';
+    if (answer === '1') return 'codex';
+    if (answer === '2') return 'antigravity';
+    if (answer === '3') return 'cancel';
+    write('  Enter 1, 2, or 3.');
+  }
+}
+async function interactiveLogin(): Promise<LoginSelection> {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try { return await loginWizard(text => prompt.question(text)); }
+  finally { prompt.close(); }
+}
+export async function antigravityProviderWizard(providerIds: string[], question: (prompt: string) => Promise<string>, write: (line: string) => void = console.log): Promise<string | undefined> {
+  write(''); write('  ANTIGRAVITY PROVIDER'); write('');
+  providerIds.forEach((id, index) => write(`  ${index + 1}. ${id}`));
+  write(`  ${providerIds.length + 1}. Cancel`); write('');
+  while (true) {
+    const answer = (await question(`  Select [${providerIds.length + 1}]: `)).trim() || String(providerIds.length + 1);
+    const selected = Number(answer);
+    if (Number.isInteger(selected) && selected >= 1 && selected <= providerIds.length) return providerIds[selected - 1];
+    if (selected === providerIds.length + 1) return undefined;
+    write(`  Enter a number from 1 to ${providerIds.length + 1}.`);
+  }
+}
+async function interactiveAntigravityProvider(providerIds: string[]): Promise<string | undefined> {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try { return await antigravityProviderWizard(providerIds, text => prompt.question(text)); }
+  finally { prompt.close(); }
+}
+export function parseLoginArguments(args: string[]): { configArgument: string; deviceAuth: boolean } {
+  const deviceAuth = args.includes('--device-auth');
+  const positional = args.filter(argument => argument !== '--device-auth');
+  if (positional.some(argument => argument.startsWith('--')) || positional.length > 1 || args.filter(argument => argument === '--device-auth').length > 1) throw new Error('Usage: aiclitoaiapi login [ABSOLUTE_CONFIG_PATH] [--device-auth]');
+  return { configArgument: positional[0] ?? defaultConfig(), deviceAuth };
+}
+async function runCodexLogin(config: Config, deviceAuth = false): Promise<void> {
+  const child = spawn(codexBinary(), ['-c', 'forced_login_method="chatgpt"', 'login', ...(deviceAuth ? ['--device-auth'] : [])], { env: runtimeEnv(config.provider.codexHome), cwd: config.provider.codexHome, stdio: 'inherit', windowsHide: true });
+  await new Promise<void>((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('Official Codex login did not complete.'))); });
+}
+async function runAgyLogin(provider: Config['providers'][number]): Promise<void> {
+  const child = spawn(provider.agyPath, [], { cwd: os.homedir(), stdio: 'inherit', windowsHide: false });
+  await new Promise<void>((resolve, reject) => { child.once('error', () => reject(new Error(`Could not start Antigravity CLI provider ${provider.id}. Check provider.agyPath.`))); child.once('exit', code => code === 0 ? resolve() : reject(new Error('Antigravity CLI login did not complete.'))); });
+}
 async function interactiveSetup(): Promise<SetupChoices> {
   const prompt = createInterface({ input: process.stdin, output: process.stdout });
   try {
@@ -307,6 +354,21 @@ async function main() {
     await runRemoteWorker(agentConfig, controller.signal).catch(error => { if (!controller.signal.aborted) throw error; });
     return;
   }
+  if (command === 'login') {
+    const selection = await interactiveLogin();
+    if (selection === 'cancel') { console.log('Login cancelled.'); return; }
+    const login = parseLoginArguments(commandArgs);
+    const loginFilename = resolveConfigFilename(login.configArgument);
+    await verifyConfigDirectory(path.dirname(loginFilename)); await verifyPrivate(loginFilename);
+    const loginConfig = await loadConfig(loginFilename);
+    if (selection === 'codex') { await verifyPrivate(loginConfig.provider.codexHome); await verifyRuntime(loginConfig.provider.codexHome); await runCodexLogin(loginConfig, login.deviceAuth); return; }
+    const antigravity = loginConfig.providers.filter(provider => provider.type === 'antigravity-cli');
+    if (!antigravity.length) throw new Error('No Antigravity CLI provider is configured.');
+    const selectedId = antigravity.length === 1 ? antigravity[0]!.id : await interactiveAntigravityProvider(antigravity.map(provider => provider.id));
+    if (!selectedId) { console.log('Login cancelled.'); return; }
+    const selected = antigravity.find(provider => provider.id === selectedId)!;
+    await runAgyLogin(selected); return;
+  }
   const filename = resolveConfigFilename(configArgument);
   if (command === 'secure-config') { await secureConfig(filename); console.log('Configuration permissions repaired. File contents and API key were not changed.'); return; }
   if (command === 'setup') {
@@ -315,19 +377,17 @@ async function main() {
     console.log(`Configuration ${result.action} privately${template ? ' from the supplied template' : ' with the generated multi-provider template'}.`);
     printSetupDetails(result.config, result.action);
     if (choices?.login === 'codex' || choices?.login === 'both') {
-      const child = spawn(codexBinary(), ['-c', 'forced_login_method="chatgpt"', 'login'], { env: runtimeEnv(result.config.provider.codexHome), cwd: result.config.provider.codexHome, stdio: 'inherit', windowsHide: true });
-      await new Promise<void>((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('Official Codex login did not complete.'))); });
+      await runCodexLogin(result.config);
     }
     if (choices?.login === 'antigravity' || choices?.login === 'both') {
       const provider = result.config.providers.find(item => item.id === 'antigravity');
       if (!provider) throw new Error('Generated Antigravity provider is missing.');
-      const child = spawn(provider.agyPath, [], { cwd: os.homedir(), stdio: 'inherit', windowsHide: false });
-      await new Promise<void>((resolve, reject) => { child.once('error', () => reject(new Error('Could not start Antigravity CLI. Check provider.agyPath.'))); child.once('exit', code => code === 0 ? resolve() : reject(new Error('Antigravity CLI login did not complete.'))); });
+      await runAgyLogin(provider);
     }
     return;
   }
   if (command === 'rotate-key') { await rotate(filename); console.log('AIcliToAIapi key rotated. Restart the aiclitoaiapi and update clients. Key was not printed.'); return; }
-  if (!['serve', 'login', 'agy-login', 'providers', 'config', 'models', 'doctor'].includes(command)) { console.log(helpText()); return; }
+  if (!['serve', 'providers', 'config', 'models', 'doctor'].includes(command)) { console.log(helpText()); return; }
   await verifyConfigDirectory(path.dirname(filename)); await verifyPrivate(filename);
   const config = await loadConfig(filename);
   if (command === 'providers') {
@@ -338,14 +398,6 @@ async function main() {
   if (command === 'config') {
     if (template) throw new Error('Usage: aiclitoaiapi config [ABSOLUTE_CONFIG_PATH] [--show-secrets]');
     printConfiguration(config, filename, showSecrets);
-    return;
-  }
-  if (command === 'agy-login') {
-    if (!template) throw new Error('Usage: aiclitoaiapi agy-login ABSOLUTE_CONFIG_PATH PROVIDER_ID');
-    const provider = config.providers.find(item => item.id === template);
-    if (!provider) throw new Error(`No Antigravity CLI provider named ${template}.`);
-    const child = spawn(provider.agyPath, [], { cwd: os.homedir(), stdio: 'inherit', windowsHide: false });
-    await new Promise<void>((resolve, reject) => { child.once('error', () => reject(new Error(`Could not start Antigravity CLI provider ${provider.id}. Check provider.agyPath.`))); child.once('exit', code => code === 0 ? resolve() : reject(new Error('Antigravity CLI login did not complete.'))); });
     return;
   }
   if (command === 'models') {
@@ -360,12 +412,6 @@ async function main() {
   }
   await verifyPrivate(config.provider.codexHome);
   await verifyRuntime(config.provider.codexHome);
-  if (command === 'login') {
-    if (template && template !== '--device-auth') throw new Error('Only --device-auth is accepted after the config path.');
-    const child = spawn(codexBinary(), ['-c', 'forced_login_method="chatgpt"', 'login', ...(template ? [template] : [])], { env: runtimeEnv(config.provider.codexHome), cwd: config.provider.codexHome, stdio: 'inherit', windowsHide: true });
-    await new Promise<void>((resolve, reject) => { child.once('error', reject); child.once('exit', code => code === 0 ? resolve() : reject(new Error('Official Codex login did not complete.'))); });
-    return;
-  }
   const provider = createProvider(config, await realpath(filename));
   if (command === 'doctor') {
     let failed = false;
